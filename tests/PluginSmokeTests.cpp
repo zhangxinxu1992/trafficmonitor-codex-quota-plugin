@@ -26,11 +26,16 @@ std::wstring CurrentExeDir()
     return slash == std::wstring::npos ? L"." : value.substr(0, slash);
 }
 
-bool EndsWith(const std::wstring& value, const wchar_t* suffix)
+bool Contains(const std::wstring& value, const wchar_t* text)
 {
-    const std::wstring suffix_value(suffix);
-    return value.size() >= suffix_value.size()
-        && value.compare(value.size() - suffix_value.size(), suffix_value.size(), suffix_value) == 0;
+    return value.find(text) != std::wstring::npos;
+}
+
+bool StartsWith(const std::wstring& value, const wchar_t* prefix)
+{
+    const std::wstring prefix_value(prefix);
+    return value.size() >= prefix_value.size()
+        && value.compare(0, prefix_value.size(), prefix_value) == 0;
 }
 
 bool RunLiveRefresh()
@@ -70,15 +75,17 @@ int main()
         {
             Check(std::wstring(five_hour->GetItemId()) == L"CodexQuota5h", "5h item id should match");
             Check(std::wstring(five_hour->GetItemName()) == L"Codex 5h", "5h item name should match");
-            Check(std::wstring(five_hour->GetItemLableText()) == L"Codex 5h", "5h label should match");
-            Check(std::wstring(five_hour->GetItemValueText()) == L"...", "5h initial value should be loading");
+            Check(std::wstring(five_hour->GetItemLableText()) == L"5h:", "5h label should avoid trim-prone whitespace");
+            Check(std::wstring(five_hour->GetItemValueSampleText()) == L" 100% 4h 59m", "5h sample should reserve value-leading spacing and full countdown width");
+            Check(std::wstring(five_hour->GetItemValueText()) == L" ...", "5h initial value should include visible spacing before loading");
         }
         if (weekly != nullptr)
         {
             Check(std::wstring(weekly->GetItemId()) == L"CodexQuotaWeek", "weekly item id should match");
             Check(std::wstring(weekly->GetItemName()) == L"Codex Week", "weekly item name should match");
-            Check(std::wstring(weekly->GetItemLableText()) == L"Codex W", "weekly label should match");
-            Check(std::wstring(weekly->GetItemValueText()) == L"...", "weekly initial value should be loading");
+            Check(std::wstring(weekly->GetItemLableText()) == L"7d:", "weekly label should avoid trim-prone whitespace");
+            Check(std::wstring(weekly->GetItemValueSampleText()) == L" 100% 6d 23h", "weekly sample should reserve value-leading spacing and full countdown width");
+            Check(std::wstring(weekly->GetItemValueText()) == L" ...", "weekly initial value should include visible spacing before loading");
         }
 
         if (RunLiveRefresh() && five_hour != nullptr && weekly != nullptr)
@@ -91,14 +98,18 @@ int main()
                 Sleep(100);
                 five_hour_value = five_hour->GetItemValueText();
                 weekly_value = weekly->GetItemValueText();
-                if (EndsWith(five_hour_value, L"%") && EndsWith(weekly_value, L"%"))
+                if (Contains(five_hour_value, L"%") && Contains(weekly_value, L"%"))
                 {
                     break;
                 }
             }
 
-            Check(EndsWith(five_hour_value, L"%"), "live 5h plugin value should become a percent");
-            Check(EndsWith(weekly_value, L"%"), "live weekly plugin value should become a percent");
+            Check(Contains(five_hour_value, L"%"), "live 5h plugin value should contain a percent");
+            Check(StartsWith(five_hour_value, L" "), "live 5h plugin value should include visible spacing before the percent");
+            Check(Contains(five_hour_value, L"m") || Contains(five_hour_value, L"h") || Contains(five_hour_value, L"now"), "live 5h plugin value should contain a reset countdown");
+            Check(Contains(weekly_value, L"%"), "live weekly plugin value should contain a percent");
+            Check(StartsWith(weekly_value, L" "), "live weekly plugin value should include visible spacing before the percent");
+            Check(Contains(weekly_value, L"h") || Contains(weekly_value, L"d") || Contains(weekly_value, L"w") || Contains(weekly_value, L"now"), "live weekly plugin value should contain a reset countdown");
         }
     }
 

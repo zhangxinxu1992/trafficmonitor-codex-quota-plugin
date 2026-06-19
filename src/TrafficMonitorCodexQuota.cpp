@@ -36,14 +36,14 @@ public:
 
     const wchar_t* GetItemLableText() const override
     {
-        return m_kind == WindowKind::FiveHour ? L"Codex 5h" : L"Codex W";
+        return m_kind == WindowKind::FiveHour ? L"5h:" : L"7d:";
     }
 
     const wchar_t* GetItemValueText() const override;
 
     const wchar_t* GetItemValueSampleText() const override
     {
-        return L"100%";
+        return m_kind == WindowKind::FiveHour ? L" 100% 4h 59m" : L" 100% 6d 23h";
     }
 
 private:
@@ -104,13 +104,13 @@ public:
         case TMI_NAME:
             return L"Codex Quota";
         case TMI_DESCRIPTION:
-            return L"Displays Codex 5-hour and weekly quota usage.";
+            return L"Displays remaining Codex 5-hour and weekly quota percentage.";
         case TMI_AUTHOR:
             return L"OpenAI Codex";
         case TMI_COPYRIGHT:
             return L"MIT";
         case TMI_VERSION:
-            return L"1.0.0";
+            return L"1.2.0";
         case TMI_URL:
             return L"";
         default:
@@ -131,14 +131,14 @@ public:
         const auto* window = SelectWindow(kind);
         if (m_has_usage && window != nullptr && window->present)
         {
-            return codexquota::FormatPercent(window->used_percent);
+            return L" " + codexquota::FormatRemainingWindowText(window->used_percent, window->reset_at, std::time(nullptr));
         }
 
         if (m_last_error.empty())
         {
-            return L"...";
+            return L" ...";
         }
-        return L"ERR";
+        return L" ERR";
     }
 
 private:
@@ -195,7 +195,7 @@ private:
             return std::wstring(title) + L": unavailable";
         }
 
-        std::wstring line = std::wstring(title) + L": " + codexquota::FormatPercent(window.used_percent) + L" used";
+        std::wstring line = std::wstring(title) + L": " + codexquota::FormatRemainingPercent(window.used_percent) + L" remaining";
         if (window.reset_at > 0)
         {
             line += L", resets in ";

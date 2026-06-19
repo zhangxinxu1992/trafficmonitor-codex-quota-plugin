@@ -298,6 +298,7 @@ std::optional<codexquota::RateWindow> ParseRateWindow(const std::string& object_
 
     return window;
 }
+
 }
 
 namespace codexquota
@@ -384,6 +385,32 @@ std::wstring FormatPercent(double used_percent)
     return std::to_wstring(rounded) + L"%";
 }
 
+std::wstring FormatRemainingPercent(double used_percent)
+{
+    if (std::isnan(used_percent) || used_percent < 0.0)
+    {
+        used_percent = 0.0;
+    }
+
+    auto remaining_percent = 100.0 - used_percent;
+    if (remaining_percent < 0.0)
+    {
+        remaining_percent = 0.0;
+    }
+    return FormatPercent(remaining_percent);
+}
+
+std::wstring FormatRemainingWindowText(double used_percent, long long reset_at, long long now)
+{
+    auto text = FormatRemainingPercent(used_percent);
+    if (reset_at > 0)
+    {
+        text += L" ";
+        text += FormatResetCountdown(reset_at, now);
+    }
+    return text;
+}
+
 std::wstring FormatResetCountdown(long long reset_at, long long now)
 {
     if (reset_at <= now)
@@ -399,6 +426,16 @@ std::wstring FormatResetCountdown(long long reset_at, long long now)
     {
         const auto days = hours / 24;
         const auto remaining_hours = hours % 24;
+        if (days >= 7)
+        {
+            const auto weeks = days / 7;
+            const auto remaining_days = days % 7;
+            if (remaining_days == 0)
+            {
+                return std::to_wstring(weeks) + L"w";
+            }
+            return std::to_wstring(weeks) + L"w " + std::to_wstring(remaining_days) + L"d";
+        }
         if (remaining_hours == 0)
         {
             return std::to_wstring(days) + L"d";
@@ -417,4 +454,5 @@ std::wstring FormatResetCountdown(long long reset_at, long long now)
 
     return std::to_wstring(minutes) + L"m";
 }
+
 }

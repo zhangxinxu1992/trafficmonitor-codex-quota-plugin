@@ -112,6 +112,23 @@ void TestFormatsUsedPercent()
     Check(codexquota::FormatPercent(125.0) == L"125%", "over-budget percent should be preserved");
 }
 
+void TestFormatsRemainingPercent()
+{
+    Check(codexquota::FormatRemainingPercent(24.4) == L"76%", "remaining percent should subtract from 100 and round");
+    Check(codexquota::FormatRemainingPercent(24.5) == L"76%", "remaining percent should round half up");
+    Check(codexquota::FormatRemainingPercent(-1.0) == L"100%", "negative used percent should leave full remaining quota");
+    Check(codexquota::FormatRemainingPercent(125.0) == L"0%", "over-budget remaining percent should clamp to zero");
+}
+
+void TestFormatsRemainingWindowText()
+{
+    Check(codexquota::FormatRemainingWindowText(24.4, 1700000300, 1700000000) == L"76% 5m", "remaining window text should include reset countdown");
+    Check(codexquota::FormatRemainingWindowText(31.0, 1700016200, 1700000000) == L"69% 4h 30m", "taskbar hour countdown should keep minutes");
+    Check(codexquota::FormatRemainingWindowText(12.0, 1700522000, 1700000000) == L"88% 6d 1h", "taskbar day countdown should keep hours");
+    Check(codexquota::FormatRemainingWindowText(10.0, 1700604800, 1700000000) == L"90% 1w", "weekly countdown should stay compact");
+    Check(codexquota::FormatRemainingWindowText(24.4, 0, 1700000000) == L"76%", "missing reset time should omit countdown");
+}
+
 void TestFormatsCountdown()
 {
     Check(codexquota::FormatResetCountdown(1700000000, 1700000000) == L"now", "past reset should be now");
@@ -129,6 +146,10 @@ void TestLiveFetchWhenRequested()
     }
 
     const auto result = codexquota::FetchUsageSnapshot();
+    if (!result.success)
+    {
+        std::wcerr << L"LIVE ERROR: " << result.error << L" status=" << result.http_status << L'\n';
+    }
     Check(result.success, "live Codex usage fetch should succeed when requested");
     Check(result.usage.primary.present, "live Codex usage should include primary window");
     Check(result.usage.secondary.present, "live Codex usage should include secondary window");
@@ -142,6 +163,8 @@ int main()
     TestRejectsMissingCredentials();
     TestParsesUsageWindows();
     TestFormatsUsedPercent();
+    TestFormatsRemainingPercent();
+    TestFormatsRemainingWindowText();
     TestFormatsCountdown();
     TestLiveFetchWhenRequested();
 

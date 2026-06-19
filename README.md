@@ -1,11 +1,18 @@
 # TrafficMonitor Codex Quota Plugin
 
-TrafficMonitor x64 plugin that displays Codex quota usage.
+TrafficMonitor x64 plugin that displays remaining Codex quota percentage.
 
 Display items:
 
-- `Codex 5h`: used percent of the 5-hour Codex window.
-- `Codex Week`: used percent of the weekly Codex window.
+- `5h:`: remaining percent of the 5-hour Codex window plus reset countdown.
+- `7d:`: remaining percent of the 7-day Codex window plus reset countdown.
+
+Example taskbar values:
+
+- `5h: 69% 42m`
+- `7d: 89% 6d 1h`
+
+The suffix after the percent is the countdown until that quota window resets. The displayed value includes a leading space because TrafficMonitor trims ordinary whitespace at the edges of plugin labels. The plugin reserves extra width so values such as `6d 23h` are not truncated.
 
 The plugin reads the local Codex CLI auth file and calls the same ChatGPT backend usage endpoint used by Win-CodexBar.
 

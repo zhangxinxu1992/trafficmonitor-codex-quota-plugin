@@ -2,14 +2,14 @@
 
 ## Goal
 
-Build a x64 TrafficMonitor plugin DLL that shows the user's Codex quota usage in the taskbar and main TrafficMonitor display.
+Build a x64 TrafficMonitor plugin DLL that shows the user's remaining Codex quota percentage in the taskbar and main TrafficMonitor display.
 
 The plugin exposes two display items:
 
-- `Codex 5h`: used percentage of the Codex 5-hour primary rate window.
-- `Codex Week`: used percentage of the Codex 7-day secondary rate window.
+- `5h:`: remaining percentage of the Codex 5-hour primary rate window plus reset countdown.
+- `7d:`: remaining percentage of the Codex 7-day secondary rate window plus reset countdown.
 
-Values are displayed as used percentages, for example `24%`.
+Values use compact text, for example `5h: 76% 42m` or `7d: 90% 6d 1h`. The suffix after the percent is the countdown until that quota window resets. The taskbar value text starts with a regular space so spacing remains visible after TrafficMonitor trims plugin-label edges. `GetItemValueSampleText()` reserves enough width for values such as ` 100% 6d 23h`.
 
 ## Data Source
 
@@ -38,10 +38,10 @@ The refresh interval is five minutes after a successful fetch and one minute aft
 The display item value is:
 
 - `...` before the first fetch completes.
-- `<n>%` when the matching window is available.
+- `<n>% <reset>` when the matching window is available.
 - `ERR` when the most recent refresh failed and no valid value is available.
 
-The tooltip includes the plan, both windows, reset countdowns, last refresh status, and the last error message when present.
+The tooltip includes the plan, both remaining windows, reset countdowns, last refresh status, and the last error message when present.
 
 ## Error Handling
 
