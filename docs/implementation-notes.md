@@ -37,6 +37,43 @@ Fields used:
 
 The displayed percentage is remaining percentage: `100 - used_percent`.
 
+## GitHub Copilot Quota Plugin
+
+The GitHub Copilot plugin is built as `TrafficMonitorGitHubCopilotQuota.dll`, separate from the Codex plugin. It exposes one TrafficMonitor item:
+
+- `GitHubCopilotQuotaAI` with label `GC:`
+
+The value text starts with one regular space, for example label `GC:` plus value ` 82% 1.2kcr 12d` displays as `GC: 82% 1.2kcr 12d`. Keep the visible spacing in the value because TrafficMonitor trims ordinary whitespace at plugin-label edges.
+
+Configuration is stored at:
+
+- `%APPDATA%\TrafficMonitorGitHubCopilotQuota\config.json`
+
+Token lookup:
+
+- Prefer `COPILOT_QUOTA_GITHUB_TOKEN`.
+- Fall back to optional plaintext `github_token` in `config.json`.
+
+API calls:
+
+- `GET https://api.github.com/user` when `username` is omitted.
+- `GET https://api.github.com/users/{username}/settings/billing/ai_credit/usage`.
+
+Allowance resolution:
+
+- Prefer `total_credits` when present.
+- Otherwise use known plan values: `pro` = 1500, `pro_plus` = 7000, `max` = 20000.
+
+`billing_day` is needed for exact billing-cycle usage and reset countdowns. Without it, the plugin uses a current calendar month estimate and omits the exact reset countdown.
+
+TrafficMonitor may cache the Copilot plugin label in `C:\Apps\TrafficMonitor\config.ini`:
+
+```ini
+GitHubCopilotQuotaAI = GC:
+```
+
+Important: `config.ini` is GBK encoded on this machine. Use code page 936 when editing it from scripts. Rewriting it as UTF-8 can garble existing Chinese labels.
+
 ## Display Decisions
 
 The taskbar items are:
