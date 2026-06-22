@@ -367,6 +367,113 @@ std::optional<std::string> FindJsonArray(const std::string& json, const std::str
     return std::nullopt;
 }
 
+std::optional<std::string> JsonObjectAt(const std::string& json, std::size_t object_pos)
+{
+    if (object_pos == std::string::npos || object_pos >= json.size() || json[object_pos] != '{')
+    {
+        return std::nullopt;
+    }
+
+    int depth = 0;
+    bool in_string = false;
+    bool escaped = false;
+    for (auto index = object_pos; index < json.size(); ++index)
+    {
+        const auto ch = json[index];
+        if (in_string)
+        {
+            if (escaped)
+            {
+                escaped = false;
+            }
+            else if (ch == '\\')
+            {
+                escaped = true;
+            }
+            else if (ch == '"')
+            {
+                in_string = false;
+            }
+            continue;
+        }
+
+        if (ch == '"')
+        {
+            in_string = true;
+        }
+        else if (ch == '{')
+        {
+            ++depth;
+        }
+        else if (ch == '}')
+        {
+            --depth;
+            if (depth == 0)
+            {
+                return json.substr(object_pos, index - object_pos + 1);
+            }
+        }
+    }
+
+    return std::nullopt;
+}
+
+std::optional<std::string> FindJsonObject(const std::string& json, const std::string& key)
+{
+    const auto value_pos = FindJsonValueStart(json, key);
+    if (!value_pos.has_value())
+    {
+        return std::nullopt;
+    }
+    return JsonObjectAt(json, *value_pos);
+}
+
+std::optional<std::string> FirstNestedJsonObject(const std::string& json)
+{
+    bool in_string = false;
+    bool escaped = false;
+    int depth = 0;
+    for (std::size_t index = 0; index < json.size(); ++index)
+    {
+        const auto ch = json[index];
+        if (in_string)
+        {
+            if (escaped)
+            {
+                escaped = false;
+            }
+            else if (ch == '\\')
+            {
+                escaped = true;
+            }
+            else if (ch == '"')
+            {
+                in_string = false;
+            }
+            continue;
+        }
+
+        if (ch == '"')
+        {
+            in_string = true;
+        }
+        else if (ch == '{')
+        {
+            ++depth;
+            if (depth == 2)
+            {
+                return JsonObjectAt(json, index);
+            }
+        }
+        else if (ch == '}' && depth > 0)
+        {
+            --depth;
+        }
+    }
+
+    return std::nullopt;
+}
+
 std::vector<std::string> ExtractJsonObjects(const std::string& array_json)
 {
     std::vector<std::string> objects;
@@ -488,6 +595,28 @@ long long TimestampFromDate(const githubcopilotquota::Date& date)
     return static_cast<long long>(::_mkgmtime(&utc));
 }
 
+std::optional<long long> ParseResetTimestamp(const std::string& value)
+{
+    if (value.size() >= 10 && value[4] == '-' && value[7] == '-')
+    {
+        try
+        {
+            const auto year = std::stoi(value.substr(0, 4));
+            const auto month = std::stoi(value.substr(5, 2));
+            const auto day = std::stoi(value.substr(8, 2));
+            if (month >= 1 && month <= 12 && day >= 1 && day <= DaysInMonth(year, month))
+            {
+                return TimestampFromDate(githubcopilotquota::Date{year, month, day});
+            }
+        }
+        catch (...)
+        {
+        }
+    }
+
+    return std::nullopt;
+}
+
 githubcopilotquota::Date AddDays(const githubcopilotquota::Date& date, int days)
 {
     return DateFromTimestamp(TimestampFromDate(date) + static_cast<long long>(days) * 24 * 60 * 60);
@@ -503,6 +632,65 @@ std::vector<githubcopilotquota::Date> BuildDateRange(const githubcopilotquota::D
         dates.push_back(DateFromTimestamp(time_value));
     }
     return dates;
+}
+
+std::optional<githubcopilotquota::CopilotInternalQuotaSnapshot> QuotaFromObject(
+    const std::string& key,
+    const std::string& object)
+{
+    const auto placeholder = FindJsonScalarText(object, "placeholder").value_or("");
+    if (placeholder == "true")
+    {
+        return std::nullopt;
+    }
+
+    const auto entitlement = FindJsonDouble(object, "entitlement");
+    const auto remaining = FindJsonDouble(object, "remaining");
+    auto percent_remaining = FindJsonDouble(object, "percent_remaining");
+    const auto quota_id = FindJsonStringValue(object, "quota_id").value_or(key);
+
+    if (entitlement == 0.0 && remaining == 0.0 && percent_remaining.value_or(0.0) == 0.0 && quota_id.empty())
+    {
+        return std::nullopt;
+    }
+
+    if (!entitlement.has_value() || *entitlement <= 0.0)
+    {
+        return std::nullopt;
+    }
+    if (!remaining.has_value())
+    {
+        return std::nullopt;
+    }
+    if (!percent_remaining.has_value())
+    {
+        percent_remaining = *remaining * 100.0 / *entitlement;
+    }
+
+    githubcopilotquota::CopilotInternalQuotaSnapshot snapshot;
+    snapshot.quota_id = ToWide(quota_id);
+    snapshot.total_credits = *entitlement;
+    snapshot.remaining_credits = *remaining;
+    snapshot.remaining_percent = *percent_remaining;
+    return snapshot;
+}
+
+std::optional<githubcopilotquota::CopilotInternalQuotaSnapshot> QuotaFromLimitedCounts(
+    const std::string& quota_id,
+    const std::optional<double>& entitlement,
+    const std::optional<double>& remaining)
+{
+    if (!entitlement.has_value() || !remaining.has_value() || *entitlement <= 0.0)
+    {
+        return std::nullopt;
+    }
+
+    githubcopilotquota::CopilotInternalQuotaSnapshot snapshot;
+    snapshot.quota_id = ToWide(quota_id);
+    snapshot.total_credits = *entitlement;
+    snapshot.remaining_credits = *remaining;
+    snapshot.remaining_percent = *remaining * 100.0 / *entitlement;
+    return snapshot;
 }
 
 }
@@ -641,6 +829,69 @@ std::optional<std::wstring> ParseAuthenticatedUserJson(const std::string& json, 
     return std::nullopt;
 }
 
+std::optional<CopilotInternalQuotaSnapshot> ParseCopilotInternalUserJson(const std::string& json, std::wstring& error)
+{
+    error.clear();
+
+    auto plan = FindJsonStringValue(json, "copilot_plan").value_or("");
+    long long reset_at = 0;
+    if (const auto reset_text = FindJsonStringValue(json, "quota_reset_date"))
+    {
+        reset_at = ParseResetTimestamp(*reset_text).value_or(0);
+    }
+
+    std::optional<CopilotInternalQuotaSnapshot> selected;
+    if (const auto snapshots = FindJsonObject(json, "quota_snapshots"))
+    {
+        for (const auto& key : {"premium_interactions", "premium", "chat", "completions"})
+        {
+            if (const auto object = FindJsonObject(*snapshots, key))
+            {
+                selected = QuotaFromObject(key, *object);
+                if (selected.has_value())
+                {
+                    break;
+                }
+            }
+        }
+
+        if (!selected.has_value())
+        {
+            if (const auto object = FirstNestedJsonObject(*snapshots))
+            {
+                selected = QuotaFromObject("quota", *object);
+            }
+        }
+    }
+
+    if (!selected.has_value())
+    {
+        const auto monthly = FindJsonObject(json, "monthly_quotas").value_or("{}");
+        const auto limited = FindJsonObject(json, "limited_user_quotas").value_or("{}");
+        selected = QuotaFromLimitedCounts(
+            "completions",
+            FindJsonDouble(monthly, "completions"),
+            FindJsonDouble(limited, "completions"));
+        if (!selected.has_value())
+        {
+            selected = QuotaFromLimitedCounts(
+                "chat",
+                FindJsonDouble(monthly, "chat"),
+                FindJsonDouble(limited, "chat"));
+        }
+    }
+
+    if (!selected.has_value())
+    {
+        error = L"GitHub Copilot internal response does not contain usable quota data.";
+        return std::nullopt;
+    }
+
+    selected->plan = Trim(ToWide(plan));
+    selected->reset_at = reset_at;
+    return selected;
+}
+
 Quota CalculateQuota(double total_credits, double consumed_credits)
 {
     if (!std::isfinite(total_credits) || total_credits < 0.0)
@@ -661,6 +912,32 @@ Quota CalculateQuota(double total_credits, double consumed_credits)
         quota.remaining_credits = 0.0;
     }
     quota.remaining_percent = total_credits <= 0.0 ? 0.0 : (quota.remaining_credits * 100.0 / total_credits);
+    return quota;
+}
+
+Quota CalculateQuotaFromRemaining(double total_credits, double remaining_credits, std::optional<double> remaining_percent)
+{
+    if (!std::isfinite(total_credits) || total_credits < 0.0)
+    {
+        total_credits = 0.0;
+    }
+    if (!std::isfinite(remaining_credits) || remaining_credits < 0.0)
+    {
+        remaining_credits = 0.0;
+    }
+
+    Quota quota;
+    quota.total_credits = total_credits;
+    quota.remaining_credits = std::min(remaining_credits, total_credits);
+    quota.consumed_credits = std::max(0.0, total_credits - quota.remaining_credits);
+    if (remaining_percent.has_value() && std::isfinite(*remaining_percent))
+    {
+        quota.remaining_percent = std::min(std::max(*remaining_percent, 0.0), 100.0);
+    }
+    else
+    {
+        quota.remaining_percent = total_credits <= 0.0 ? 0.0 : (quota.remaining_credits * 100.0 / total_credits);
+    }
     return quota;
 }
 

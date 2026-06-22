@@ -22,7 +22,7 @@ This repository also builds `TrafficMonitorGitHubCopilotQuota.dll`, a separate x
 
 The plugin exposes one display item:
 
-- `GC:`: remaining monthly GitHub Copilot AI Credits percentage, compact remaining-credit count, and optional reset countdown.
+- `GC:`: remaining GitHub Copilot quota percentage, compact remaining-count value, and optional reset countdown.
 
 Example taskbar values:
 
@@ -31,27 +31,26 @@ Example taskbar values:
 
 The value text starts with a regular space, for example label `GC:` plus value ` 82% 1.2kcr 12d`, because TrafficMonitor trims ordinary whitespace at plugin-label edges.
 
-Configuration is stored at `%APPDATA%\TrafficMonitorGitHubCopilotQuota\config.json`. It must include either `plan` or `total_credits` as the allowance source. Add `billing_day` when you want exact billing-cycle usage and a reset countdown:
+Set `COPILOT_QUOTA_GITHUB_TOKEN` for authentication. With that environment variable set, no config file is required.
+
+Optional configuration is stored at `%APPDATA%\TrafficMonitorGitHubCopilotQuota\config.json`. Use it only when you want a plaintext fallback token or a tooltip username:
 
 ```json
 {
-  "plan": "pro",
-  "billing_day": 15
+  "username": "YOUR_GITHUB_LOGIN"
 }
 ```
 
-Use `total_credits` instead of `plan` for a custom allowance:
+Plaintext token fallback is also supported, but the environment variable is preferred:
 
 ```json
 {
-  "total_credits": 3200,
-  "billing_day": 15
+  "github_token": "YOUR_GITHUB_TOKEN",
+  "username": "YOUR_GITHUB_LOGIN"
 }
 ```
 
-Set `COPILOT_QUOTA_GITHUB_TOKEN` for authentication. A plaintext `github_token` value in `config.json` is supported only as a fallback.
-
-`billing_day` is optional. Without it, the plugin uses a current calendar month estimate and omits the exact reset countdown.
+The plugin uses the same Copilot internal quota endpoint pattern as Win-CodexBar, so `plan`, `total_credits`, and `billing_day` are not required.
 
 Project-specific implementation notes and known pitfalls are in `docs/implementation-notes.md`.
 

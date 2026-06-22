@@ -1,5 +1,7 @@
 # TrafficMonitor GitHub Copilot Quota Plugin Design
 
+> Historical note: this original design targeted GitHub's AI Credits billing API. The current implementation instead follows the Win-CodexBar Copilot provider pattern and queries `/copilot_internal/user`; see `README.md` and `docs/implementation-notes.md` for the active behavior. `plan`, `total_credits`, and `billing_day` are no longer required.
+
 ## Goal
 
 Build a separate x64 TrafficMonitor plugin DLL that shows the user's remaining GitHub Copilot monthly AI Credits in the taskbar and main TrafficMonitor display.

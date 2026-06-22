@@ -42,6 +42,7 @@ struct UsagePeriod
     std::vector<Date> usage_dates;
     long long reset_at{};
     bool is_calendar_month_estimate{};
+    bool is_copilot_internal{};
 };
 
 struct Quota
@@ -52,12 +53,24 @@ struct Quota
     double remaining_percent{};
 };
 
+struct CopilotInternalQuotaSnapshot
+{
+    std::wstring plan;
+    std::wstring quota_id;
+    double total_credits{};
+    double remaining_credits{};
+    double remaining_percent{};
+    long long reset_at{};
+};
+
 std::optional<PluginConfig> ParseConfigJson(const std::wstring& json, std::wstring& error);
 std::optional<Allowance> ResolveAllowance(const PluginConfig& config, std::wstring& error);
 std::optional<UsageReport> ParseUsageJson(const std::string& json, std::wstring& error);
 std::optional<std::wstring> ParseAuthenticatedUserJson(const std::string& json, std::wstring& error);
+std::optional<CopilotInternalQuotaSnapshot> ParseCopilotInternalUserJson(const std::string& json, std::wstring& error);
 
 Quota CalculateQuota(double total_credits, double consumed_credits);
+Quota CalculateQuotaFromRemaining(double total_credits, double remaining_credits, std::optional<double> remaining_percent);
 UsagePeriod CalculateBillingPeriod(int billing_day, long long now);
 UsagePeriod CalculateCalendarMonthEstimate(long long now);
 

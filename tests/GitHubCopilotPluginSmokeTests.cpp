@@ -135,7 +135,7 @@ int main()
     {
         Check(plugin->GetAPIVersion() >= 7, "plugin API version should support OnInitialize");
         Check(std::wstring(plugin->GetInfo(ITMPlugin::TMI_NAME)) == L"GitHub Copilot Quota", "plugin name should match");
-        Check(std::wstring(plugin->GetInfo(ITMPlugin::TMI_DESCRIPTION)) == L"Displays remaining GitHub Copilot monthly AI Credits.", "plugin description should match");
+        Check(std::wstring(plugin->GetInfo(ITMPlugin::TMI_DESCRIPTION)) == L"Displays remaining GitHub Copilot quota.", "plugin description should match");
 
         IPluginItem* item = plugin->GetItem(0);
         Check(item != nullptr, "first item should exist");
@@ -144,7 +144,7 @@ int main()
         if (item != nullptr)
         {
             Check(std::wstring(item->GetItemId()) == L"GitHubCopilotQuotaAI", "item id should match");
-            Check(std::wstring(item->GetItemName()) == L"GitHub Copilot AI Credits", "item name should match");
+            Check(std::wstring(item->GetItemName()) == L"GitHub Copilot Quota", "item name should match");
             Check(std::wstring(item->GetItemLableText()) == L"GC:", "label should avoid trim-prone whitespace");
             Check(std::wstring(item->GetItemValueSampleText()) == L" 100% 20.0kcr 31d", "sample should reserve value-leading spacing and full countdown width");
 

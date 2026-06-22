@@ -10,6 +10,9 @@ namespace
 {
 constexpr const wchar_t* kUserAgent = L"TrafficMonitorGitHubCopilotQuota/1.0";
 constexpr const wchar_t* kGitHubHost = L"api.github.com";
+constexpr const wchar_t* kCopilotInternalUserAgent = L"GitHubCopilotChat/0.26.7";
+constexpr const wchar_t* kCopilotEditorVersion = L"vscode/1.96.2";
+constexpr const wchar_t* kCopilotEditorPluginVersion = L"copilot-chat/0.26.7";
 
 using githubcopilotquota::GitHubHttpRequest;
 using githubcopilotquota::GitHubHttpResponse;
@@ -220,21 +223,31 @@ bool EnsureWinHttpConnected(WinHttpGitHubContext& context, std::wstring& error)
     return true;
 }
 
-GitHubHttpRequest MakeGitHubRequest(const std::wstring& path, const std::wstring& token)
+GitHubHttpRequest MakeCopilotInternalRequest(const std::wstring& token)
 {
     return GitHubHttpRequest{
-        path,
-        L"application/vnd.github+json",
-        L"Bearer " + token,
-        L"2026-03-10",
-        kUserAgent};
+        L"/copilot_internal/user",
+        L"application/json",
+        L"token " + token,
+        L"2025-04-01",
+        kCopilotInternalUserAgent,
+        kCopilotEditorVersion,
+        kCopilotEditorPluginVersion};
 }
 
 bool AddGitHubRequestHeaders(HINTERNET request, const GitHubHttpRequest& git_hub_request, std::wstring& error)
 {
     std::wstring headers = L"Accept: " + git_hub_request.accept + L"\r\n";
     headers += L"Authorization: " + git_hub_request.authorization + L"\r\n";
-    headers += L"X-GitHub-Api-Version: " + git_hub_request.api_version + L"\r\n";
+    headers += L"X-Github-Api-Version: " + git_hub_request.api_version + L"\r\n";
+    if (!git_hub_request.editor_version.empty())
+    {
+        headers += L"Editor-Version: " + git_hub_request.editor_version + L"\r\n";
+    }
+    if (!git_hub_request.editor_plugin_version.empty())
+    {
+        headers += L"Editor-Plugin-Version: " + git_hub_request.editor_plugin_version + L"\r\n";
+    }
     headers += L"User-Agent: " + git_hub_request.user_agent;
     headers += L"\r\n";
 
@@ -390,6 +403,8 @@ FetchResult FetchQuotaSnapshotFromConfigJson(
     GitHubHttpRequestCallback request_callback,
     void* request_context)
 {
+    (void)now;
+
     FetchResult result;
 
     auto config = ParseConfigJson(config_json, result.error);
@@ -414,21 +429,15 @@ FetchResult FetchQuotaSnapshotFromConfigJson(
         return result;
     }
 
-    auto allowance = ResolveAllowance(*config, result.error);
-    if (!allowance.has_value())
-    {
-        return result;
-    }
-
     if (request_callback == nullptr)
     {
         result.error = L"GitHub request transport is not initialized.";
         return result;
     }
 
-    auto execute_request = [&](const std::wstring& path, GitHubHttpResponse& response) {
+    auto execute_request = [&](GitHubHttpResponse& response) {
         std::wstring request_error;
-        if (!request_callback(MakeGitHubRequest(path, token), response, request_error, request_context))
+        if (!request_callback(MakeCopilotInternalRequest(token), response, request_error, request_context))
         {
             result.error = request_error.empty() ? L"GitHub request failed." : request_error;
             return false;
@@ -437,82 +446,55 @@ FetchResult FetchQuotaSnapshotFromConfigJson(
         result.http_status = response.http_status;
         if (response.http_status == 401 || response.http_status == 403)
         {
-            result.error = L"GitHub authentication failed or token lacks Plan read permission.";
+            result.error = L"GitHub Copilot authentication failed.";
             return false;
         }
         if (response.http_status < 200 || response.http_status >= 300)
         {
-            result.error = L"GitHub API returned HTTP " + std::to_wstring(response.http_status) + L".";
+            result.error = L"GitHub Copilot API returned HTTP " + std::to_wstring(response.http_status) + L".";
             return false;
         }
         return true;
     };
 
-    auto username = config->username;
-    if (username.empty())
+    GitHubHttpResponse usage_response;
+    if (!execute_request(usage_response))
     {
-        GitHubHttpResponse user_response;
-        if (!execute_request(L"/user", user_response))
-        {
-            return result;
-        }
-
-        auto parsed_username = ParseAuthenticatedUserJson(user_response.body, result.error);
-        if (!parsed_username.has_value())
-        {
-            return result;
-        }
-        username = *parsed_username;
+        return result;
     }
 
-    const auto period = config->has_billing_day
-        ? CalculateBillingPeriod(config->billing_day, now)
-        : CalculateCalendarMonthEstimate(now);
+    const auto internal_snapshot = ParseCopilotInternalUserJson(usage_response.body, result.error);
+    if (!internal_snapshot.has_value())
+    {
+        return result;
+    }
+
+    auto quota = CalculateQuotaFromRemaining(
+        internal_snapshot->total_credits,
+        internal_snapshot->remaining_credits,
+        internal_snapshot->remaining_percent);
+
+    UsagePeriod period;
+    period.reset_at = internal_snapshot->reset_at;
+    period.is_copilot_internal = true;
 
     UsageReport usage;
-    usage.user = username;
-
-    if (config->has_billing_day)
-    {
-        for (const auto& date : period.usage_dates)
-        {
-            GitHubHttpResponse usage_response;
-            if (!execute_request(BuildUsagePath(username, date), usage_response))
-            {
-                return result;
-            }
-
-            auto usage_report = ParseUsageJson(usage_response.body, result.error);
-            if (!usage_report.has_value())
-            {
-                return result;
-            }
-            usage.consumed_credits += usage_report->consumed_credits;
-        }
-    }
-    else
-    {
-        GitHubHttpResponse usage_response;
-        if (!execute_request(BuildMonthlyUsagePath(username, period.start.year, period.start.month), usage_response))
-        {
-            return result;
-        }
-
-        auto usage_report = ParseUsageJson(usage_response.body, result.error);
-        if (!usage_report.has_value())
-        {
-            return result;
-        }
-        usage.consumed_credits = usage_report->consumed_credits;
-    }
+    usage.user = config->username;
+    usage.consumed_credits = quota.consumed_credits;
 
     config->github_token.clear();
+    if (config->plan.empty())
+    {
+        config->plan = internal_snapshot->plan;
+    }
     result.snapshot.config = *config;
-    result.snapshot.allowance = *allowance;
+    result.snapshot.allowance = Allowance{
+        internal_snapshot->total_credits,
+        internal_snapshot->quota_id.empty() ? L"copilot_internal" : L"copilot_internal:" + internal_snapshot->quota_id};
     result.snapshot.period = period;
     result.snapshot.usage = usage;
-    result.snapshot.quota = CalculateQuota(allowance->total_credits, usage.consumed_credits);
-    result.snapshot.username = username;
+    result.snapshot.quota = quota;
+    result.snapshot.username = config->username;
     result.success = true;
     return result;
 }
@@ -522,16 +504,21 @@ FetchResult FetchQuotaSnapshot()
     FetchResult result;
 
     std::wstring config_json;
+    const auto env_token = GetEnvVar(L"COPILOT_QUOTA_GITHUB_TOKEN");
     const auto config_path = GetDefaultConfigPath();
     if (!ReadFileUtf8AsWide(config_path, config_json, result.error))
     {
-        return result;
+        if (Trim(env_token).empty() || result.error.find(L"config not found") == std::wstring::npos)
+        {
+            return result;
+        }
+        config_json.clear();
     }
 
     WinHttpGitHubContext context;
     return FetchQuotaSnapshotFromConfigJson(
         config_json,
-        GetEnvVar(L"COPILOT_QUOTA_GITHUB_TOKEN"),
+        env_token,
         static_cast<long long>(std::time(nullptr)),
         RealGitHubRequest,
         &context);

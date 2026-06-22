@@ -31,6 +31,8 @@ struct GitHubHttpRequest
     std::wstring authorization;
     std::wstring api_version;
     std::wstring user_agent;
+    std::wstring editor_version;
+    std::wstring editor_plugin_version;
 };
 
 struct GitHubHttpResponse

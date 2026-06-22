@@ -85,6 +85,30 @@ std::vector<githubcopilotquota::GitHubHttpResponse> FakeUsageResponses(int count
     return responses;
 }
 
+githubcopilotquota::GitHubHttpResponse FakeCopilotInternalResponse()
+{
+    return githubcopilotquota::GitHubHttpResponse{
+        200,
+        R"({
+            "copilot_plan": "pro",
+            "quota_reset_date": "2026-07-01",
+            "quota_snapshots": {
+                "premium_interactions": {
+                    "entitlement": 300,
+                    "remaining": 240,
+                    "percent_remaining": 80,
+                    "quota_id": "premium_interactions"
+                },
+                "chat": {
+                    "entitlement": 1000,
+                    "remaining": 900,
+                    "percent_remaining": 90,
+                    "quota_id": "chat"
+                }
+            }
+        })"};
+}
+
 void TestParsesConfigWithExplicitAllowance()
 {
     std::wstring error;
@@ -329,6 +353,40 @@ void TestParsesUserLogin()
     Check(*login == L"octocat", "login should parse");
 }
 
+void TestParsesCopilotInternalPremiumQuota()
+{
+    std::wstring error;
+    const auto snapshot = githubcopilotquota::ParseCopilotInternalUserJson(FakeCopilotInternalResponse().body, error);
+
+    Check(snapshot.has_value(), "Copilot internal response should parse");
+    Check(snapshot->plan == L"pro", "Copilot internal plan should parse");
+    Check(snapshot->quota_id == L"premium_interactions", "premium quota should be selected");
+    CheckNear(snapshot->total_credits, 300.0, "premium entitlement should become total quota");
+    CheckNear(snapshot->remaining_credits, 240.0, "premium remaining should parse");
+    CheckNear(snapshot->remaining_percent, 80.0, "premium percent_remaining should parse");
+    Check(snapshot->reset_at == 1782864000, "quota_reset_date should parse as UTC reset timestamp");
+    Check(error.empty(), "successful Copilot internal parse should not set error");
+}
+
+void TestParsesCopilotInternalLimitedQuotaFallback()
+{
+    std::wstring error;
+    const auto snapshot = githubcopilotquota::ParseCopilotInternalUserJson(
+        R"({
+            "copilot_plan": "free",
+            "monthly_quotas": { "completions": 2000, "chat": 50 },
+            "limited_user_quotas": { "completions": 1000, "chat": 10 }
+        })",
+        error);
+
+    Check(snapshot.has_value(), "limited Copilot internal response should parse");
+    Check(snapshot->quota_id == L"completions", "limited completions quota should be selected");
+    CheckNear(snapshot->total_credits, 2000.0, "limited monthly quota should become total quota");
+    CheckNear(snapshot->remaining_credits, 1000.0, "limited remaining quota should parse");
+    CheckNear(snapshot->remaining_percent, 50.0, "limited remaining percent should calculate");
+    Check(error.empty(), "successful limited Copilot internal parse should not set error");
+}
+
 void TestDefaultConfigPathUsesAppDataConfigFile()
 {
     const auto path = githubcopilotquota::GetDefaultConfigPath();
@@ -484,29 +542,33 @@ void TestBuildsUsagePaths()
 void TestFetchUsesConfigTokenAndClearsSnapshotToken()
 {
     FakeGitHubTransport fake;
-    fake.responses = FakeUsageResponses(8, 1.0);
+    fake.responses.push_back(FakeCopilotInternalResponse());
 
     const auto result = githubcopilotquota::FetchQuotaSnapshotFromConfigJson(
-        LR"({"github_token":"config-token","username":"octocat","total_credits":100,"billing_day":15})",
+        LR"({"github_token":"config-token"})",
         L"",
         1782086400,
         FakeGitHubRequest,
         &fake);
 
     Check(result.success, "fetch helper should succeed with config token fallback");
-    Check(!fake.requests.empty(), "fetch helper should issue usage requests");
-    Check(!fake.requests.empty() && fake.requests.front().authorization == L"Bearer config-token", "config token should be used for Authorization header");
+    Check(fake.requests.size() == 1, "Copilot internal fetch should issue one request");
+    Check(!fake.requests.empty() && fake.requests.front().path == L"/copilot_internal/user", "Copilot internal fetch should use the internal user endpoint");
+    Check(!fake.requests.empty() && fake.requests.front().authorization == L"token config-token", "config token should be used for Copilot token Authorization header");
     Check(result.snapshot.config.github_token.empty(), "snapshot config should not retain GitHub token");
-    CheckNear(result.snapshot.usage.consumed_credits, 8.0, "daily usage should be summed");
+    CheckNear(result.snapshot.quota.total_credits, 300.0, "internal entitlement should become quota total");
+    CheckNear(result.snapshot.quota.remaining_credits, 240.0, "internal remaining should become quota remaining");
+    CheckNear(result.snapshot.quota.remaining_percent, 80.0, "internal percent_remaining should become quota remaining percent");
+    Check(result.snapshot.period.reset_at == 1782864000, "internal quota_reset_date should become reset timestamp");
 }
 
-void TestFetchRequestHeadersUseGitHubContract()
+void TestFetchRequestHeadersUseCopilotInternalContract()
 {
     FakeGitHubTransport fake;
-    fake.responses.push_back(FakeUsageResponse(2.0));
+    fake.responses.push_back(FakeCopilotInternalResponse());
 
     const auto result = githubcopilotquota::FetchQuotaSnapshotFromConfigJson(
-        LR"({"github_token":"config-token","username":"octocat","total_credits":100})",
+        LR"({"github_token":"config-token"})",
         L"",
         1782086400,
         FakeGitHubRequest,
@@ -514,26 +576,46 @@ void TestFetchRequestHeadersUseGitHubContract()
 
     Check(result.success, "fetch helper should succeed when checking header contract");
     Check(!fake.requests.empty(), "fetch helper should capture a request for header contract");
-    Check(!fake.requests.empty() && fake.requests.front().accept == L"application/vnd.github+json", "GitHub request Accept header should use GitHub JSON media type");
-    Check(!fake.requests.empty() && fake.requests.front().api_version == L"2026-03-10", "GitHub request API version header should match contract");
-    Check(!fake.requests.empty() && fake.requests.front().user_agent == L"TrafficMonitorGitHubCopilotQuota/1.0", "GitHub request User-Agent header should match contract");
+    Check(!fake.requests.empty() && fake.requests.front().accept == L"application/json", "Copilot internal request Accept header should match VS Code contract");
+    Check(!fake.requests.empty() && fake.requests.front().api_version == L"2025-04-01", "Copilot internal request API version header should match contract");
+    Check(!fake.requests.empty() && fake.requests.front().user_agent == L"GitHubCopilotChat/0.26.7", "Copilot internal request User-Agent header should match contract");
+    Check(!fake.requests.empty() && fake.requests.front().editor_version == L"vscode/1.96.2", "Copilot internal request Editor-Version header should match contract");
+    Check(!fake.requests.empty() && fake.requests.front().editor_plugin_version == L"copilot-chat/0.26.7", "Copilot internal request Editor-Plugin-Version header should match contract");
 }
 
 void TestFetchEnvTokenOverridesConfigToken()
 {
     FakeGitHubTransport fake;
-    fake.responses.push_back(FakeUsageResponse(2.0));
+    fake.responses.push_back(FakeCopilotInternalResponse());
 
     const auto result = githubcopilotquota::FetchQuotaSnapshotFromConfigJson(
-        LR"({"github_token":"config-token","username":"octocat","total_credits":100})",
+        LR"({"github_token":"config-token"})",
         L"env-token",
         1782086400,
         FakeGitHubRequest,
         &fake);
 
     Check(result.success, "fetch helper should succeed with env token");
-    Check(fake.requests.size() == 1, "calendar estimate should issue one request");
-    Check(!fake.requests.empty() && fake.requests.front().authorization == L"Bearer env-token", "env token should override config token");
+    Check(fake.requests.size() == 1, "Copilot internal mode should issue one request");
+    Check(!fake.requests.empty() && fake.requests.front().authorization == L"token env-token", "env token should override config token");
+}
+
+void TestFetchEnvTokenWorksWithoutConfigAllowance()
+{
+    FakeGitHubTransport fake;
+    fake.responses.push_back(FakeCopilotInternalResponse());
+
+    const auto result = githubcopilotquota::FetchQuotaSnapshotFromConfigJson(
+        L"",
+        L"env-token",
+        1782086400,
+        FakeGitHubRequest,
+        &fake);
+
+    Check(result.success, "env token should fetch without plan, total_credits, billing_day, or username config");
+    Check(fake.requests.size() == 1, "config-free env token fetch should issue one Copilot internal request");
+    CheckNear(result.snapshot.quota.total_credits, 300.0, "config-free fetch should use internal entitlement as total");
+    CheckNear(result.snapshot.quota.remaining_percent, 80.0, "config-free fetch should use internal percent remaining");
 }
 
 void TestFetchRejectsEnvTokenWithCrLf()
@@ -573,36 +655,34 @@ void TestFetchRejectsConfigTokenWithCrLf()
 void TestFetchMissingUsernameCallsUserEndpoint()
 {
     FakeGitHubTransport fake;
-    fake.responses.push_back(githubcopilotquota::GitHubHttpResponse{200, R"({"login":"octocat"})"});
-    fake.responses.push_back(FakeUsageResponse(3.0));
+    fake.responses.push_back(FakeCopilotInternalResponse());
 
     const auto result = githubcopilotquota::FetchQuotaSnapshotFromConfigJson(
-        LR"({"github_token":"config-token","total_credits":100})",
+        LR"({"github_token":"config-token"})",
         L"",
         1782086400,
         FakeGitHubRequest,
         &fake);
 
-    Check(result.success, "fetch helper should succeed after resolving missing username");
-    Check(fake.requests.size() == 2, "missing username should add user request before usage request");
-    Check(fake.requests.size() >= 1 && fake.requests[0].path == L"/user", "missing username should call /user");
-    Check(result.snapshot.username == L"octocat", "resolved login should be snapshot username");
+    Check(result.success, "fetch helper should not require username for Copilot internal usage");
+    Check(fake.requests.size() == 1, "missing username should not add user request");
+    Check(!fake.requests.empty() && fake.requests[0].path != L"/user", "Copilot internal usage should not call /user");
 }
 
 void TestFetchConfiguredUsernameSkipsUserEndpoint()
 {
     FakeGitHubTransport fake;
-    fake.responses.push_back(FakeUsageResponse(4.0));
+    fake.responses.push_back(FakeCopilotInternalResponse());
 
     const auto result = githubcopilotquota::FetchQuotaSnapshotFromConfigJson(
-        LR"({"github_token":"config-token","username":"octocat","total_credits":100})",
+        LR"({"github_token":"config-token","username":"octocat"})",
         L"",
         1782086400,
         FakeGitHubRequest,
         &fake);
 
-    Check(result.success, "fetch helper should succeed with configured username");
-    Check(fake.requests.size() == 1, "configured username should only issue usage request");
+    Check(result.success, "fetch helper should succeed with configured username ignored by internal endpoint");
+    Check(fake.requests.size() == 1, "configured username should only issue Copilot internal request");
     Check(!fake.requests.empty() && fake.requests.front().path != L"/user", "configured username should skip /user");
 }
 
@@ -614,7 +694,7 @@ void TestFetchAuthErrorsUseStableMessage()
         fake.responses.push_back(githubcopilotquota::GitHubHttpResponse{status, "{}"});
 
         const auto result = githubcopilotquota::FetchQuotaSnapshotFromConfigJson(
-            LR"({"github_token":"config-token","username":"octocat","total_credits":100})",
+            LR"({"github_token":"config-token"})",
             L"",
             1782086400,
             FakeGitHubRequest,
@@ -622,7 +702,7 @@ void TestFetchAuthErrorsUseStableMessage()
 
         Check(!result.success, "auth HTTP status should fail fetch helper");
         Check(result.http_status == status, "auth HTTP status should be reported");
-        Check(result.error == L"GitHub authentication failed or token lacks Plan read permission.", "auth error should use stable message");
+        Check(result.error == L"GitHub Copilot authentication failed.", "auth error should use stable message");
     }
 }
 
@@ -632,7 +712,7 @@ void TestFetchNonSuccessHttpStatusIncludesStatus()
     fake.responses.push_back(githubcopilotquota::GitHubHttpResponse{500, "{}"});
 
     const auto result = githubcopilotquota::FetchQuotaSnapshotFromConfigJson(
-        LR"({"github_token":"config-token","username":"octocat","total_credits":100})",
+        LR"({"github_token":"config-token"})",
         L"",
         1782086400,
         FakeGitHubRequest,
@@ -640,42 +720,7 @@ void TestFetchNonSuccessHttpStatusIncludesStatus()
 
     Check(!result.success, "non-2xx HTTP status should fail fetch helper");
     Check(result.http_status == 500, "non-2xx HTTP status should be reported");
-    Check(result.error == L"GitHub API returned HTTP 500.", "non-2xx error should include HTTP status");
-}
-
-void TestFetchBillingDayRequestsDailyUsageThroughToday()
-{
-    FakeGitHubTransport fake;
-    fake.responses = FakeUsageResponses(8, 1.0);
-
-    const auto result = githubcopilotquota::FetchQuotaSnapshotFromConfigJson(
-        LR"({"github_token":"config-token","username":"octocat","total_credits":100,"billing_day":15})",
-        L"",
-        1782086400,
-        FakeGitHubRequest,
-        &fake);
-
-    Check(result.success, "billing-day fetch helper should succeed");
-    Check(fake.requests.size() == 8, "billing-day mode should request elapsed daily usage only");
-    Check(!fake.requests.empty() && fake.requests.front().path == L"/users/octocat/settings/billing/ai_credit/usage?year=2026&month=6&day=15", "billing-day first request should be cycle start");
-    Check(!fake.requests.empty() && fake.requests.back().path == L"/users/octocat/settings/billing/ai_credit/usage?year=2026&month=6&day=22", "billing-day last request should be today");
-}
-
-void TestFetchCalendarEstimateRequestsMonthlyUsageOnce()
-{
-    FakeGitHubTransport fake;
-    fake.responses.push_back(FakeUsageResponse(5.0));
-
-    const auto result = githubcopilotquota::FetchQuotaSnapshotFromConfigJson(
-        LR"({"github_token":"config-token","username":"octocat","total_credits":100})",
-        L"",
-        1782086400,
-        FakeGitHubRequest,
-        &fake);
-
-    Check(result.success, "calendar-estimate fetch helper should succeed");
-    Check(fake.requests.size() == 1, "calendar-estimate mode should issue one monthly request");
-    Check(!fake.requests.empty() && fake.requests.front().path == L"/users/octocat/settings/billing/ai_credit/usage?year=2026&month=6", "calendar-estimate request should use monthly path");
+    Check(result.error == L"GitHub Copilot API returned HTTP 500.", "non-2xx error should include HTTP status");
 }
 
 void TestLiveFetchWhenRequested()
@@ -713,6 +758,8 @@ int main()
     TestRejectsNonFiniteUsageNetQuantity();
     TestRejectsUnquotedWhitespaceGarbageUsageNetQuantity();
     TestParsesUserLogin();
+    TestParsesCopilotInternalPremiumQuota();
+    TestParsesCopilotInternalLimitedQuotaFallback();
     TestDefaultConfigPathUsesAppDataConfigFile();
     TestFormatsCreditCounts();
     TestHandlesNonFiniteFormattingAndQuotaMath();
@@ -727,16 +774,15 @@ int main()
     TestCalculatesCalendarMonthEstimate();
     TestBuildsUsagePaths();
     TestFetchUsesConfigTokenAndClearsSnapshotToken();
-    TestFetchRequestHeadersUseGitHubContract();
+    TestFetchRequestHeadersUseCopilotInternalContract();
     TestFetchEnvTokenOverridesConfigToken();
+    TestFetchEnvTokenWorksWithoutConfigAllowance();
     TestFetchRejectsEnvTokenWithCrLf();
     TestFetchRejectsConfigTokenWithCrLf();
     TestFetchMissingUsernameCallsUserEndpoint();
     TestFetchConfiguredUsernameSkipsUserEndpoint();
     TestFetchAuthErrorsUseStableMessage();
     TestFetchNonSuccessHttpStatusIncludesStatus();
-    TestFetchBillingDayRequestsDailyUsageThroughToday();
-    TestFetchCalendarEstimateRequestsMonthlyUsageOnce();
     TestLiveFetchWhenRequested();
 
     if (failures != 0)

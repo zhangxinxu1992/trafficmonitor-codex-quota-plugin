@@ -45,27 +45,43 @@ The GitHub Copilot plugin is built as `TrafficMonitorGitHubCopilotQuota.dll`, se
 
 The value text starts with one regular space, for example label `GC:` plus value ` 82% 1.2kcr 12d` displays as `GC: 82% 1.2kcr 12d`. Keep the visible spacing in the value because TrafficMonitor trims ordinary whitespace at plugin-label edges.
 
-Configuration is stored at:
+The plugin follows the Win-CodexBar Copilot provider approach and queries GitHub's Copilot internal user endpoint:
 
-- `%APPDATA%\TrafficMonitorGitHubCopilotQuota\config.json`
+- `GET https://api.github.com/copilot_internal/user`
 
 Token lookup:
 
 - Prefer `COPILOT_QUOTA_GITHUB_TOKEN`.
 - Fall back to optional plaintext `github_token` in `config.json`.
 
-API calls:
+Request headers intentionally mirror VS Code Copilot Chat:
 
-- `GET https://api.github.com/user` when `username` is omitted.
-- With `billing_day`, daily calls: `GET https://api.github.com/users/{username}/settings/billing/ai_credit/usage?year=YYYY&month=M&day=D`.
-- Without `billing_day`, monthly call: `GET https://api.github.com/users/{username}/settings/billing/ai_credit/usage?year=YYYY&month=M`.
+- `Accept: application/json`
+- `Authorization: token <token>`
+- `Editor-Version: vscode/1.96.2`
+- `Editor-Plugin-Version: copilot-chat/0.26.7`
+- `User-Agent: GitHubCopilotChat/0.26.7`
+- `X-Github-Api-Version: 2025-04-01`
 
-Allowance resolution:
+Response fields used:
 
-- Prefer `total_credits` when present.
-- Otherwise use known plan values: `pro` = 1500, `pro_plus` = 7000, `max` = 20000.
+- `copilot_plan`
+- `quota_reset_date`
+- `quota_snapshots.*.entitlement`
+- `quota_snapshots.*.remaining`
+- `quota_snapshots.*.percent_remaining`
+- fallback: `monthly_quotas` plus `limited_user_quotas`
 
-`billing_day` is needed for exact billing-cycle usage and reset countdowns. Without it, the plugin uses a current calendar month estimate and omits the exact reset countdown.
+The internal response provides quota totals, remaining values, remaining percentage, and reset date. `plan`, `total_credits`, and `billing_day` are therefore not required for normal operation.
+
+Optional configuration is stored at:
+
+- `%APPDATA%\TrafficMonitorGitHubCopilotQuota\config.json`
+
+Currently useful optional config keys:
+
+- `github_token`: plaintext fallback token when the environment variable is not set.
+- `username`: displayed in the tooltip only; no `/user` request is needed for quota fetching.
 
 TrafficMonitor may cache the Copilot plugin label in `C:\Apps\TrafficMonitor\config.ini`:
 

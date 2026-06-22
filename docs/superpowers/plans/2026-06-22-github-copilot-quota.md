@@ -1,5 +1,7 @@
 # GitHub Copilot Quota Implementation Plan
 
+> Historical note: this plan implemented the first AI Credits billing API approach. The active GitHub Copilot plugin behavior now follows Win-CodexBar and fetches `/copilot_internal/user`; see `README.md` and `docs/implementation-notes.md`. `plan`, `total_credits`, and `billing_day` are no longer required.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build a separate TrafficMonitor x64 plugin DLL that displays remaining monthly GitHub Copilot AI Credits as `GC:`.

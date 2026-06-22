@@ -17,7 +17,7 @@ class GitHubCopilotQuotaItem final : public IPluginItem
 public:
     const wchar_t* GetItemName() const override
     {
-        return L"GitHub Copilot AI Credits";
+        return L"GitHub Copilot Quota";
     }
 
     const wchar_t* GetItemId() const override
@@ -85,7 +85,7 @@ public:
         case TMI_NAME:
             return L"GitHub Copilot Quota";
         case TMI_DESCRIPTION:
-            return L"Displays remaining GitHub Copilot monthly AI Credits.";
+            return L"Displays remaining GitHub Copilot quota.";
         case TMI_AUTHOR:
             return L"OpenAI Codex";
         case TMI_COPYRIGHT:
@@ -175,6 +175,11 @@ private:
 
     std::wstring PeriodModeLineLocked() const
     {
+        if (m_snapshot.period.is_copilot_internal)
+        {
+            return L"Period mode: GitHub Copilot internal quota";
+        }
+
         if (m_snapshot.period.is_calendar_month_estimate)
         {
             return L"Period mode: calendar month estimate";
