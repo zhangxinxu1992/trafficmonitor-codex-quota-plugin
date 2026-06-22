@@ -488,6 +488,11 @@ long long TimestampFromDate(const githubcopilotquota::Date& date)
     return static_cast<long long>(::_mkgmtime(&utc));
 }
 
+githubcopilotquota::Date AddDays(const githubcopilotquota::Date& date, int days)
+{
+    return DateFromTimestamp(TimestampFromDate(date) + static_cast<long long>(days) * 24 * 60 * 60);
+}
+
 std::vector<githubcopilotquota::Date> BuildDateRange(const githubcopilotquota::Date& start, const githubcopilotquota::Date& end)
 {
     std::vector<githubcopilotquota::Date> dates;
@@ -682,7 +687,12 @@ UsagePeriod CalculateBillingPeriod(int billing_day, long long now)
     }
 
     period.reset_at = TimestampFromDate(period.end);
-    period.usage_dates = BuildDateRange(period.start, period.end);
+    auto usage_end = AddDays(current, 1);
+    if (TimestampFromDate(usage_end) > TimestampFromDate(period.end))
+    {
+        usage_end = period.end;
+    }
+    period.usage_dates = BuildDateRange(period.start, usage_end);
     period.is_calendar_month_estimate = false;
     return period;
 }

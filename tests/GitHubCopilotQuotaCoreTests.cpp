@@ -7,6 +7,7 @@
 #include <limits>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace
 {
@@ -24,6 +25,64 @@ void Check(bool condition, const char* message)
 void CheckNear(double actual, double expected, const char* message)
 {
     Check(std::fabs(actual - expected) < 0.0001, message);
+}
+
+bool IsOnOrBefore(const githubcopilotquota::Date& actual, const githubcopilotquota::Date& expected)
+{
+    if (actual.year != expected.year)
+    {
+        return actual.year < expected.year;
+    }
+    if (actual.month != expected.month)
+    {
+        return actual.month < expected.month;
+    }
+    return actual.day <= expected.day;
+}
+
+struct FakeGitHubTransport
+{
+    std::vector<githubcopilotquota::GitHubHttpRequest> requests;
+    std::vector<githubcopilotquota::GitHubHttpResponse> responses;
+};
+
+bool FakeGitHubRequest(
+    const githubcopilotquota::GitHubHttpRequest& request,
+    githubcopilotquota::GitHubHttpResponse& response,
+    std::wstring& error,
+    void* context)
+{
+    auto* fake = static_cast<FakeGitHubTransport*>(context);
+    fake->requests.push_back(request);
+
+    const auto response_index = fake->requests.size() - 1;
+    if (response_index >= fake->responses.size())
+    {
+        error = L"Unexpected GitHub request: " + request.path;
+        return false;
+    }
+
+    response = fake->responses[response_index];
+    return true;
+}
+
+githubcopilotquota::GitHubHttpResponse FakeUsageResponse(double credits)
+{
+    return githubcopilotquota::GitHubHttpResponse{
+        200,
+        R"({"user":"octocat","usageItems":[{"product":"Copilot AI Credits","sku":"AI Credit","netQuantity":")"
+            + std::to_string(credits)
+            + R"("}]})"};
+}
+
+std::vector<githubcopilotquota::GitHubHttpResponse> FakeUsageResponses(int count, double credits)
+{
+    std::vector<githubcopilotquota::GitHubHttpResponse> responses;
+    for (auto index = 0; index < count; ++index)
+    {
+        responses.push_back(FakeUsageResponse(credits));
+    }
+    return responses;
 }
 
 void TestParsesConfigWithExplicitAllowance()
@@ -366,6 +425,22 @@ void TestCalculatesBillingPeriod()
     Check(period.usage_dates.front().day == 15, "first usage date should be start day");
 }
 
+void TestBillingPeriodUsageDatesStopAtToday()
+{
+    const long long now = 1782086400;
+    const auto period = githubcopilotquota::CalculateBillingPeriod(15, now);
+
+    Check(period.end.year == 2026 && period.end.month == 7 && period.end.day == 15, "billing period end should remain next reset");
+    Check(period.reset_at == 1784073600, "billing reset timestamp should remain next billing day UTC");
+    Check(!period.usage_dates.empty(), "billing usage dates should include elapsed cycle dates");
+    const auto last = period.usage_dates.back();
+    Check(last.year == 2026 && last.month == 6 && last.day == 22, "billing usage dates should stop at today");
+    for (const auto& date : period.usage_dates)
+    {
+        Check(IsOnOrBefore(date, githubcopilotquota::Date{2026, 6, 22}), "billing usage dates should not include future dates");
+    }
+}
+
 void TestCalculatesBillingPeriodBeforeBillingDay()
 {
     const long long now = 1780704000;
@@ -404,6 +479,150 @@ void TestBuildsUsagePaths()
 
     Check(githubcopilotquota::BuildUsagePath(L"octocat", date) == L"/users/octocat/settings/billing/ai_credit/usage?year=2026&month=6&day=22", "daily usage path should include year month day");
     Check(githubcopilotquota::BuildMonthlyUsagePath(L"octocat", 2026, 6) == L"/users/octocat/settings/billing/ai_credit/usage?year=2026&month=6", "monthly usage path should include year month");
+}
+
+void TestFetchUsesConfigTokenAndClearsSnapshotToken()
+{
+    FakeGitHubTransport fake;
+    fake.responses = FakeUsageResponses(8, 1.0);
+
+    const auto result = githubcopilotquota::FetchQuotaSnapshotFromConfigJson(
+        LR"({"github_token":"config-token","username":"octocat","total_credits":100,"billing_day":15})",
+        L"",
+        1782086400,
+        FakeGitHubRequest,
+        &fake);
+
+    Check(result.success, "fetch helper should succeed with config token fallback");
+    Check(!fake.requests.empty(), "fetch helper should issue usage requests");
+    Check(!fake.requests.empty() && fake.requests.front().authorization == L"Bearer config-token", "config token should be used for Authorization header");
+    Check(result.snapshot.config.github_token.empty(), "snapshot config should not retain GitHub token");
+    CheckNear(result.snapshot.usage.consumed_credits, 8.0, "daily usage should be summed");
+}
+
+void TestFetchEnvTokenOverridesConfigToken()
+{
+    FakeGitHubTransport fake;
+    fake.responses.push_back(FakeUsageResponse(2.0));
+
+    const auto result = githubcopilotquota::FetchQuotaSnapshotFromConfigJson(
+        LR"({"github_token":"config-token","username":"octocat","total_credits":100})",
+        L"env-token",
+        1782086400,
+        FakeGitHubRequest,
+        &fake);
+
+    Check(result.success, "fetch helper should succeed with env token");
+    Check(fake.requests.size() == 1, "calendar estimate should issue one request");
+    Check(!fake.requests.empty() && fake.requests.front().authorization == L"Bearer env-token", "env token should override config token");
+}
+
+void TestFetchMissingUsernameCallsUserEndpoint()
+{
+    FakeGitHubTransport fake;
+    fake.responses.push_back(githubcopilotquota::GitHubHttpResponse{200, R"({"login":"octocat"})"});
+    fake.responses.push_back(FakeUsageResponse(3.0));
+
+    const auto result = githubcopilotquota::FetchQuotaSnapshotFromConfigJson(
+        LR"({"github_token":"config-token","total_credits":100})",
+        L"",
+        1782086400,
+        FakeGitHubRequest,
+        &fake);
+
+    Check(result.success, "fetch helper should succeed after resolving missing username");
+    Check(fake.requests.size() == 2, "missing username should add user request before usage request");
+    Check(fake.requests.size() >= 1 && fake.requests[0].path == L"/user", "missing username should call /user");
+    Check(result.snapshot.username == L"octocat", "resolved login should be snapshot username");
+}
+
+void TestFetchConfiguredUsernameSkipsUserEndpoint()
+{
+    FakeGitHubTransport fake;
+    fake.responses.push_back(FakeUsageResponse(4.0));
+
+    const auto result = githubcopilotquota::FetchQuotaSnapshotFromConfigJson(
+        LR"({"github_token":"config-token","username":"octocat","total_credits":100})",
+        L"",
+        1782086400,
+        FakeGitHubRequest,
+        &fake);
+
+    Check(result.success, "fetch helper should succeed with configured username");
+    Check(fake.requests.size() == 1, "configured username should only issue usage request");
+    Check(!fake.requests.empty() && fake.requests.front().path != L"/user", "configured username should skip /user");
+}
+
+void TestFetchAuthErrorsUseStableMessage()
+{
+    for (const auto status : {401, 403})
+    {
+        FakeGitHubTransport fake;
+        fake.responses.push_back(githubcopilotquota::GitHubHttpResponse{status, "{}"});
+
+        const auto result = githubcopilotquota::FetchQuotaSnapshotFromConfigJson(
+            LR"({"github_token":"config-token","username":"octocat","total_credits":100})",
+            L"",
+            1782086400,
+            FakeGitHubRequest,
+            &fake);
+
+        Check(!result.success, "auth HTTP status should fail fetch helper");
+        Check(result.http_status == status, "auth HTTP status should be reported");
+        Check(result.error == L"GitHub authentication failed or token lacks Plan read permission.", "auth error should use stable message");
+    }
+}
+
+void TestFetchNonSuccessHttpStatusIncludesStatus()
+{
+    FakeGitHubTransport fake;
+    fake.responses.push_back(githubcopilotquota::GitHubHttpResponse{500, "{}"});
+
+    const auto result = githubcopilotquota::FetchQuotaSnapshotFromConfigJson(
+        LR"({"github_token":"config-token","username":"octocat","total_credits":100})",
+        L"",
+        1782086400,
+        FakeGitHubRequest,
+        &fake);
+
+    Check(!result.success, "non-2xx HTTP status should fail fetch helper");
+    Check(result.http_status == 500, "non-2xx HTTP status should be reported");
+    Check(result.error == L"GitHub API returned HTTP 500.", "non-2xx error should include HTTP status");
+}
+
+void TestFetchBillingDayRequestsDailyUsageThroughToday()
+{
+    FakeGitHubTransport fake;
+    fake.responses = FakeUsageResponses(8, 1.0);
+
+    const auto result = githubcopilotquota::FetchQuotaSnapshotFromConfigJson(
+        LR"({"github_token":"config-token","username":"octocat","total_credits":100,"billing_day":15})",
+        L"",
+        1782086400,
+        FakeGitHubRequest,
+        &fake);
+
+    Check(result.success, "billing-day fetch helper should succeed");
+    Check(fake.requests.size() == 8, "billing-day mode should request elapsed daily usage only");
+    Check(!fake.requests.empty() && fake.requests.front().path == L"/users/octocat/settings/billing/ai_credit/usage?year=2026&month=6&day=15", "billing-day first request should be cycle start");
+    Check(!fake.requests.empty() && fake.requests.back().path == L"/users/octocat/settings/billing/ai_credit/usage?year=2026&month=6&day=22", "billing-day last request should be today");
+}
+
+void TestFetchCalendarEstimateRequestsMonthlyUsageOnce()
+{
+    FakeGitHubTransport fake;
+    fake.responses.push_back(FakeUsageResponse(5.0));
+
+    const auto result = githubcopilotquota::FetchQuotaSnapshotFromConfigJson(
+        LR"({"github_token":"config-token","username":"octocat","total_credits":100})",
+        L"",
+        1782086400,
+        FakeGitHubRequest,
+        &fake);
+
+    Check(result.success, "calendar-estimate fetch helper should succeed");
+    Check(fake.requests.size() == 1, "calendar-estimate mode should issue one monthly request");
+    Check(!fake.requests.empty() && fake.requests.front().path == L"/users/octocat/settings/billing/ai_credit/usage?year=2026&month=6", "calendar-estimate request should use monthly path");
 }
 
 void TestLiveFetchWhenRequested()
@@ -449,10 +668,19 @@ int main()
     TestFormatsQuotaValue();
     TestFormatsMonthlyResetCountdownInDays();
     TestCalculatesBillingPeriod();
+    TestBillingPeriodUsageDatesStopAtToday();
     TestCalculatesBillingPeriodBeforeBillingDay();
     TestCalculatesBillingPeriodWithShorterMonth();
     TestCalculatesCalendarMonthEstimate();
     TestBuildsUsagePaths();
+    TestFetchUsesConfigTokenAndClearsSnapshotToken();
+    TestFetchEnvTokenOverridesConfigToken();
+    TestFetchMissingUsernameCallsUserEndpoint();
+    TestFetchConfiguredUsernameSkipsUserEndpoint();
+    TestFetchAuthErrorsUseStableMessage();
+    TestFetchNonSuccessHttpStatusIncludesStatus();
+    TestFetchBillingDayRequestsDailyUsageThroughToday();
+    TestFetchCalendarEstimateRequestsMonthlyUsageOnce();
     TestLiveFetchWhenRequested();
 
     if (failures != 0)
