@@ -223,7 +223,7 @@ private:
         }
         else
         {
-            tooltip += L"\nWaiting for first refresh.";
+            tooltip += m_last_refresh == 0 ? L"\nWaiting for first refresh." : L"\nNo successful refresh yet.";
         }
 
         tooltip += L"\nLast refresh status: ";

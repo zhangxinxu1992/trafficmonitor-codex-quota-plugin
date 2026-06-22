@@ -1,8 +1,10 @@
 #include "PluginInterface.h"
 
 #include <Windows.h>
+#include <chrono>
 #include <iostream>
 #include <string>
+#include <thread>
 
 namespace
 {
@@ -31,6 +33,86 @@ bool StartsWith(const std::wstring& value, const wchar_t* prefix)
     const std::wstring prefix_value(prefix);
     return value.size() >= prefix_value.size()
         && value.compare(0, prefix_value.size(), prefix_value) == 0;
+}
+
+bool Contains(const std::wstring& value, const wchar_t* text)
+{
+    return value.find(text) != std::wstring::npos;
+}
+
+std::wstring ReadEnvironmentVariable(const wchar_t* name)
+{
+    const DWORD size = GetEnvironmentVariableW(name, nullptr, 0);
+    if (size == 0)
+    {
+        return {};
+    }
+
+    std::wstring value(size, L'\0');
+    const DWORD written = GetEnvironmentVariableW(name, value.data(), size);
+    value.resize(written);
+    return value;
+}
+
+class EnvironmentVariableGuard
+{
+public:
+    EnvironmentVariableGuard(const wchar_t* name, const wchar_t* value)
+        : m_name(name),
+          m_had_value(GetEnvironmentVariableW(name, nullptr, 0) != 0),
+          m_original(ReadEnvironmentVariable(name))
+    {
+        SetEnvironmentVariableW(m_name.c_str(), value);
+    }
+
+    ~EnvironmentVariableGuard()
+    {
+        SetEnvironmentVariableW(m_name.c_str(), m_had_value ? m_original.c_str() : nullptr);
+    }
+
+private:
+    std::wstring m_name;
+    bool m_had_value{};
+    std::wstring m_original;
+};
+
+std::wstring CreateIsolatedAppDataDir()
+{
+    wchar_t temp_path[MAX_PATH]{};
+    GetTempPathW(MAX_PATH, temp_path);
+
+    wchar_t temp_name[MAX_PATH]{};
+    GetTempFileNameW(temp_path, L"gcq", 0, temp_name);
+    DeleteFileW(temp_name);
+    CreateDirectoryW(temp_name, nullptr);
+    return temp_name;
+}
+
+void VerifyRefreshFailurePath(ITMPlugin* plugin, IPluginItem* item)
+{
+    const auto appdata = CreateIsolatedAppDataDir();
+    EnvironmentVariableGuard appdata_guard(L"APPDATA", appdata.c_str());
+    EnvironmentVariableGuard token_guard(L"COPILOT_QUOTA_GITHUB_TOKEN", nullptr);
+
+    plugin->DataRequired();
+
+    std::wstring value;
+    for (int attempt = 0; attempt < 50; ++attempt)
+    {
+        value = item->GetItemValueText();
+        if (value == L" ERR")
+        {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+
+    Check(value == L" ERR", "refresh failure should show ERR without a previous snapshot");
+
+    const std::wstring tooltip(plugin->GetTooltipInfo());
+    Check(Contains(tooltip, L"Last refresh status: failed"), "tooltip should report a failed refresh");
+    Check(Contains(tooltip, L"No successful refresh yet."), "tooltip should report no successful refresh after first failure");
+    Check(!Contains(tooltip, L"Waiting for first refresh."), "tooltip should not keep claiming it is waiting after first failure");
 }
 }
 
@@ -69,6 +151,8 @@ int main()
             const std::wstring initial_value(item->GetItemValueText());
             Check(initial_value == L" ...", "initial value should include visible spacing before loading");
             Check(StartsWith(initial_value, L" "), "initial value should start with visible spacing");
+
+            VerifyRefreshFailurePath(plugin, item);
         }
     }
 
