@@ -93,6 +93,7 @@ void VerifyRefreshFailurePath(ITMPlugin* plugin, IPluginItem* item)
     const auto appdata = CreateIsolatedAppDataDir();
     EnvironmentVariableGuard appdata_guard(L"APPDATA", appdata.c_str());
     EnvironmentVariableGuard token_guard(L"COPILOT_QUOTA_GITHUB_TOKEN", nullptr);
+    EnvironmentVariableGuard stored_guard(L"GITHUB_COPILOT_QUOTA_SKIP_STORED_CREDENTIAL", L"1");
 
     plugin->DataRequired();
 
@@ -136,6 +137,11 @@ int main()
         Check(plugin->GetAPIVersion() >= 7, "plugin API version should support OnInitialize");
         Check(std::wstring(plugin->GetInfo(ITMPlugin::TMI_NAME)) == L"GitHub Copilot Quota", "plugin name should match");
         Check(std::wstring(plugin->GetInfo(ITMPlugin::TMI_DESCRIPTION)) == L"Displays remaining GitHub Copilot quota.", "plugin description should match");
+        {
+            EnvironmentVariableGuard options_guard(L"GITHUB_COPILOT_QUOTA_OPTIONS_SMOKE_TEST", L"1");
+            Check(plugin->ShowOptionsDialog(nullptr) == ITMPlugin::OR_OPTION_UNCHANGED,
+                "plugin options dialog should be provided");
+        }
 
         IPluginItem* item = plugin->GetItem(0);
         Check(item != nullptr, "first item should exist");

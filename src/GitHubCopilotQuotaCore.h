@@ -16,6 +16,19 @@ struct PluginConfig
     bool has_billing_day{};
 };
 
+enum class GitHubTokenSource
+{
+    Environment,
+    StoredCredential,
+    Config
+};
+
+struct GitHubTokenChoice
+{
+    std::wstring token;
+    GitHubTokenSource source{};
+};
+
 struct Allowance
 {
     double total_credits{};
@@ -63,11 +76,47 @@ struct CopilotInternalQuotaSnapshot
     long long reset_at{};
 };
 
+struct DeviceCodeResponse
+{
+    std::wstring device_code;
+    std::wstring user_code;
+    std::wstring verification_uri;
+    std::wstring verification_uri_complete;
+    int expires_in{};
+    int interval{};
+};
+
+enum class OAuthTokenStatus
+{
+    Success,
+    AuthorizationPending,
+    SlowDown,
+    ExpiredToken,
+    AccessDenied,
+    Error
+};
+
+struct OAuthTokenResponse
+{
+    OAuthTokenStatus status{OAuthTokenStatus::Error};
+    std::wstring access_token;
+    std::wstring token_type;
+    std::wstring scope;
+    std::wstring error;
+};
+
 std::optional<PluginConfig> ParseConfigJson(const std::wstring& json, std::wstring& error);
+std::optional<GitHubTokenChoice> ResolveGitHubToken(
+    const std::wstring& env_token,
+    const std::wstring& stored_token,
+    const PluginConfig& config,
+    std::wstring& error);
 std::optional<Allowance> ResolveAllowance(const PluginConfig& config, std::wstring& error);
 std::optional<UsageReport> ParseUsageJson(const std::string& json, std::wstring& error);
 std::optional<std::wstring> ParseAuthenticatedUserJson(const std::string& json, std::wstring& error);
 std::optional<CopilotInternalQuotaSnapshot> ParseCopilotInternalUserJson(const std::string& json, std::wstring& error);
+std::optional<DeviceCodeResponse> ParseDeviceCodeJson(const std::string& json, std::wstring& error);
+OAuthTokenResponse ParseAccessTokenJson(const std::string& json, std::wstring& error);
 
 Quota CalculateQuota(double total_credits, double consumed_credits);
 Quota CalculateQuotaFromRemaining(double total_credits, double remaining_credits, std::optional<double> remaining_percent);

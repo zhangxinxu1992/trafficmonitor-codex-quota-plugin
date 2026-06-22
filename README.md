@@ -31,9 +31,18 @@ Example taskbar values:
 
 The value text starts with a regular space, for example label `GC:` plus value ` 82% 1.2kcr 12d`, because TrafficMonitor trims ordinary whitespace at plugin-label edges.
 
-Set `COPILOT_QUOTA_GITHUB_TOKEN` for authentication. With that environment variable set, no config file is required.
+Recommended authentication is the plugin options dialog:
 
-Optional configuration is stored at `%APPDATA%\TrafficMonitorGitHubCopilotQuota\config.json`. Use it only when you want a plaintext fallback token or a tooltip username:
+1. Open the GitHub Copilot quota plugin options in TrafficMonitor.
+2. Click `Sign in with GitHub`.
+3. The plugin shows the GitHub device code and copies it to the clipboard.
+4. Complete the GitHub browser/device-code sign-in. If GitHub asks for a code, paste the copied code.
+
+The plugin stores the resulting OAuth token in Windows Credential Manager as a protected local credential. The sign-in flow is only started by the user from options; the background quota refresh never opens a browser.
+
+`COPILOT_QUOTA_GITHUB_TOKEN` is still supported as the highest-priority override. With that environment variable set, no config file or stored credential is required.
+
+Optional configuration is stored at `%APPDATA%\TrafficMonitorGitHubCopilotQuota\config.json`. Use it only when you want a tooltip username or a legacy plaintext fallback token:
 
 ```json
 {
@@ -41,7 +50,7 @@ Optional configuration is stored at `%APPDATA%\TrafficMonitorGitHubCopilotQuota\
 }
 ```
 
-Plaintext token fallback is also supported, but the environment variable is preferred:
+Plaintext token fallback is still supported for compatibility, but plugin options sign-in or the environment variable is preferred:
 
 ```json
 {

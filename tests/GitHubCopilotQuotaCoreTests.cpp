@@ -46,6 +46,14 @@ struct FakeGitHubTransport
     std::vector<githubcopilotquota::GitHubHttpResponse> responses;
 };
 
+struct FakeDeviceLoginCallbacks
+{
+    std::vector<std::wstring> opened_urls;
+    std::vector<std::wstring> user_codes;
+    std::vector<int> sleeps;
+    std::vector<std::pair<std::wstring, std::wstring>> stored_tokens;
+};
+
 bool FakeGitHubRequest(
     const githubcopilotquota::GitHubHttpRequest& request,
     githubcopilotquota::GitHubHttpResponse& response,
@@ -64,6 +72,36 @@ bool FakeGitHubRequest(
 
     response = fake->responses[response_index];
     return true;
+}
+
+bool FakeOpenBrowser(const std::wstring& url, std::wstring& error, void* context)
+{
+    (void)error;
+    auto* fake = static_cast<FakeDeviceLoginCallbacks*>(context);
+    fake->opened_urls.push_back(url);
+    return true;
+}
+
+bool FakeShowDeviceCode(const githubcopilotquota::DeviceCodeResponse& device, std::wstring& error, void* context)
+{
+    (void)error;
+    auto* fake = static_cast<FakeDeviceLoginCallbacks*>(context);
+    fake->user_codes.push_back(device.user_code);
+    return true;
+}
+
+bool FakeStoreToken(const std::wstring& token, const std::wstring& username, std::wstring& error, void* context)
+{
+    (void)error;
+    auto* fake = static_cast<FakeDeviceLoginCallbacks*>(context);
+    fake->stored_tokens.push_back({token, username});
+    return true;
+}
+
+void FakeSleep(int seconds, void* context)
+{
+    auto* fake = static_cast<FakeDeviceLoginCallbacks*>(context);
+    fake->sleeps.push_back(seconds);
 }
 
 githubcopilotquota::GitHubHttpResponse FakeUsageResponse(double credits)
@@ -107,6 +145,263 @@ githubcopilotquota::GitHubHttpResponse FakeCopilotInternalResponse()
                 }
             }
         })"};
+}
+
+void TestResolvesGitHubTokenPrecedence()
+{
+    githubcopilotquota::PluginConfig config;
+    config.github_token = L" config-token ";
+
+    std::wstring error;
+    const auto env_choice = githubcopilotquota::ResolveGitHubToken(L" env-token ", L" stored-token ", config, error);
+    Check(env_choice.has_value(), "env token choice should resolve");
+    Check(env_choice->token == L"env-token", "env token should be trimmed and preferred");
+    Check(env_choice->source == githubcopilotquota::GitHubTokenSource::Environment, "env token source should be reported");
+
+    error.clear();
+    const auto stored_choice = githubcopilotquota::ResolveGitHubToken(L"", L" stored-token ", config, error);
+    Check(stored_choice.has_value(), "stored token choice should resolve");
+    Check(stored_choice->token == L"stored-token", "stored token should be trimmed and preferred over config");
+    Check(stored_choice->source == githubcopilotquota::GitHubTokenSource::StoredCredential, "stored token source should be reported");
+
+    error.clear();
+    const auto config_choice = githubcopilotquota::ResolveGitHubToken(L"", L"", config, error);
+    Check(config_choice.has_value(), "config token choice should resolve");
+    Check(config_choice->token == L"config-token", "config token should be trimmed");
+    Check(config_choice->source == githubcopilotquota::GitHubTokenSource::Config, "config token source should be reported");
+
+    config.github_token.clear();
+    error.clear();
+    const auto missing_choice = githubcopilotquota::ResolveGitHubToken(L" ", L" ", config, error);
+    Check(!missing_choice.has_value(), "missing token choice should fail");
+    Check(error == L"Missing GitHub token. Sign in from plugin options, set COPILOT_QUOTA_GITHUB_TOKEN, or set github_token in config.json.",
+        "missing token error should mention options sign-in");
+}
+
+void TestParsesDeviceCodeResponse()
+{
+    std::wstring error;
+    const auto response = githubcopilotquota::ParseDeviceCodeJson(
+        R"({
+            "device_code": "device-code",
+            "user_code": "ABCD-EFGH",
+            "verification_uri": "https://github.com/login/device",
+            "verification_uri_complete": "https://github.com/login/device?user_code=ABCD-EFGH",
+            "expires_in": 900,
+            "interval": 5
+        })",
+        error);
+
+    Check(response.has_value(), "device code JSON should parse");
+    Check(response->device_code == L"device-code", "device code should parse");
+    Check(response->user_code == L"ABCD-EFGH", "user code should parse");
+    Check(response->verification_uri == L"https://github.com/login/device", "verification URI should parse");
+    Check(response->verification_uri_complete == L"https://github.com/login/device?user_code=ABCD-EFGH",
+        "complete verification URI should parse");
+    Check(response->expires_in == 900, "device code expiry should parse");
+    Check(response->interval == 5, "device code interval should parse");
+    Check(error.empty(), "successful device code parse should not set error");
+}
+
+void TestParsesAccessTokenResponse()
+{
+    std::wstring error;
+    const auto response = githubcopilotquota::ParseAccessTokenJson(
+        R"({"access_token":"oauth-token","token_type":"bearer","scope":"read:user"})",
+        error);
+
+    Check(response.status == githubcopilotquota::OAuthTokenStatus::Success, "access token JSON should parse as success");
+    Check(response.access_token == L"oauth-token", "access token should parse");
+    Check(response.token_type == L"bearer", "token type should parse");
+    Check(response.scope == L"read:user", "scope should parse");
+    Check(error.empty(), "successful access token parse should not set error");
+}
+
+void TestParsesAccessTokenPendingAndSlowDownErrors()
+{
+    std::wstring error;
+    const auto pending = githubcopilotquota::ParseAccessTokenJson(
+        R"({"error":"authorization_pending","error_description":"pending"})",
+        error);
+    Check(pending.status == githubcopilotquota::OAuthTokenStatus::AuthorizationPending,
+        "authorization_pending should parse as pending status");
+    Check(error.empty(), "pending access token parse should not set fatal error");
+
+    const auto slow_down = githubcopilotquota::ParseAccessTokenJson(
+        R"({"error":"slow_down","error_description":"slow down"})",
+        error);
+    Check(slow_down.status == githubcopilotquota::OAuthTokenStatus::SlowDown,
+        "slow_down should parse as slow down status");
+    Check(error.empty(), "slow down access token parse should not set fatal error");
+}
+
+void TestCredentialTokenRoundTripWithTestTarget()
+{
+    std::wstring error;
+    const auto target = L"TrafficMonitorGitHubCopilotQuota:Test:" + std::to_wstring(GetCurrentProcessId());
+
+    Check(githubcopilotquota::DeleteCredentialToken(target, error), "pre-test credential cleanup should succeed");
+    error.clear();
+
+    Check(githubcopilotquota::WriteCredentialToken(target, L"stored-oauth-token", L"octocat", error),
+        "credential token write should succeed");
+    Check(error.empty(), "successful credential token write should not set error");
+
+    const auto token = githubcopilotquota::ReadCredentialToken(target, error);
+    Check(token.has_value(), "credential token read should succeed");
+    Check(token.value_or(L"") == L"stored-oauth-token", "credential token read should return original token");
+
+    error.clear();
+    Check(githubcopilotquota::DeleteCredentialToken(target, error), "credential token delete should succeed");
+    Check(error.empty(), "successful credential token delete should not set error");
+
+    const auto deleted_token = githubcopilotquota::ReadCredentialToken(target, error);
+    Check(!deleted_token.has_value(), "deleted credential token should not be found");
+}
+
+void TestFetchUsesStoredTokenBeforeConfigToken()
+{
+    FakeGitHubTransport fake;
+    fake.responses.push_back(FakeCopilotInternalResponse());
+
+    const auto result = githubcopilotquota::FetchQuotaSnapshotFromConfigJsonWithStoredToken(
+        LR"({"github_token":"config-token"})",
+        L"",
+        L"stored-token",
+        1782086400,
+        FakeGitHubRequest,
+        &fake);
+
+    Check(result.success, "fetch helper should succeed with stored token");
+    Check(fake.requests.size() == 1, "stored-token fetch should issue one request");
+    Check(!fake.requests.empty() && fake.requests.front().authorization == L"token stored-token",
+        "stored token should be used before config token");
+}
+
+void TestFetchEnvTokenOverridesStoredToken()
+{
+    FakeGitHubTransport fake;
+    fake.responses.push_back(FakeCopilotInternalResponse());
+
+    const auto result = githubcopilotquota::FetchQuotaSnapshotFromConfigJsonWithStoredToken(
+        LR"({"github_token":"config-token"})",
+        L"env-token",
+        L"stored-token",
+        1782086400,
+        FakeGitHubRequest,
+        &fake);
+
+    Check(result.success, "fetch helper should succeed with env token and stored token present");
+    Check(fake.requests.size() == 1, "env-token fetch should issue one request");
+    Check(!fake.requests.empty() && fake.requests.front().authorization == L"token env-token",
+        "env token should override stored token");
+}
+
+void TestRunGitHubDeviceLoginStoresTokenAfterVerification()
+{
+    FakeGitHubTransport transport;
+    transport.responses.push_back(githubcopilotquota::GitHubHttpResponse{
+        200,
+        R"({
+            "device_code": "device-code",
+            "user_code": "ABCD-EFGH",
+            "verification_uri": "https://github.com/login/device",
+            "verification_uri_complete": "https://github.com/login/device?user_code=ABCD-EFGH",
+            "expires_in": 900,
+            "interval": 5
+        })"});
+    transport.responses.push_back(githubcopilotquota::GitHubHttpResponse{
+        200,
+        R"({"error":"authorization_pending"})"});
+    transport.responses.push_back(githubcopilotquota::GitHubHttpResponse{
+        200,
+        R"({"access_token":"oauth-token","token_type":"bearer","scope":"read:user"})"});
+    transport.responses.push_back(githubcopilotquota::GitHubHttpResponse{
+        200,
+        R"({"login":"octocat"})"});
+    transport.responses.push_back(FakeCopilotInternalResponse());
+
+    FakeDeviceLoginCallbacks callbacks;
+    const auto result = githubcopilotquota::RunGitHubDeviceLogin(
+        FakeGitHubRequest,
+        &transport,
+        FakeShowDeviceCode,
+        &callbacks,
+        FakeOpenBrowser,
+        &callbacks,
+        FakeStoreToken,
+        &callbacks,
+        FakeSleep,
+        &callbacks);
+
+    Check(result.success, "device login should succeed after browser authorization");
+    Check(result.username == L"octocat", "device login should return verified username");
+    Check(callbacks.user_codes.size() == 1 && callbacks.user_codes.front() == L"ABCD-EFGH",
+        "device login should show the user code before polling");
+    Check(callbacks.opened_urls.size() == 1, "device login should open one browser URL");
+    Check(!callbacks.opened_urls.empty()
+            && callbacks.opened_urls.front() == L"https://github.com/login/device?user_code=ABCD-EFGH",
+        "device login should prefer complete verification URL");
+    Check(callbacks.sleeps.size() == 2, "device login should sleep before each token poll");
+    Check(callbacks.sleeps.size() == 2 && callbacks.sleeps[0] == 5 && callbacks.sleeps[1] == 5,
+        "device login should use GitHub polling interval");
+    Check(callbacks.stored_tokens.size() == 1, "device login should store one token");
+    Check(!callbacks.stored_tokens.empty() && callbacks.stored_tokens.front().first == L"oauth-token",
+        "device login should store OAuth token");
+    Check(!callbacks.stored_tokens.empty() && callbacks.stored_tokens.front().second == L"octocat",
+        "device login should store verified username with token");
+    Check(transport.requests.size() == 5, "device login should issue device, poll, poll, user, and quota requests");
+    Check(transport.requests.size() == 5 && transport.requests[0].host == L"github.com",
+        "device code request should target github.com");
+    Check(transport.requests.size() == 5 && transport.requests[0].method == L"POST",
+        "device code request should use POST");
+    Check(transport.requests.size() == 5 && transport.requests[1].path == L"/login/oauth/access_token",
+        "token poll request should use OAuth access token path");
+    Check(transport.requests.size() == 5 && transport.requests[3].path == L"/user",
+        "device login should verify identity before storing token");
+    Check(transport.requests.size() == 5 && transport.requests[4].path == L"/copilot_internal/user",
+        "device login should verify Copilot quota before storing token");
+}
+
+void TestRunGitHubDeviceLoginBuildsCompleteUrlWhenGitHubOmitsIt()
+{
+    FakeGitHubTransport transport;
+    transport.responses.push_back(githubcopilotquota::GitHubHttpResponse{
+        200,
+        R"({
+            "device_code": "device-code",
+            "user_code": "WXYZ-1234",
+            "verification_uri": "https://github.com/login/device",
+            "expires_in": 900,
+            "interval": 5
+        })"});
+    transport.responses.push_back(githubcopilotquota::GitHubHttpResponse{
+        200,
+        R"({"access_token":"oauth-token","token_type":"bearer","scope":"read:user"})"});
+    transport.responses.push_back(githubcopilotquota::GitHubHttpResponse{
+        200,
+        R"({"login":"octocat"})"});
+    transport.responses.push_back(FakeCopilotInternalResponse());
+
+    FakeDeviceLoginCallbacks callbacks;
+    const auto result = githubcopilotquota::RunGitHubDeviceLogin(
+        FakeGitHubRequest,
+        &transport,
+        FakeShowDeviceCode,
+        &callbacks,
+        FakeOpenBrowser,
+        &callbacks,
+        FakeStoreToken,
+        &callbacks,
+        FakeSleep,
+        &callbacks);
+
+    Check(result.success, "device login should succeed when GitHub omits verification_uri_complete");
+    Check(callbacks.user_codes.size() == 1 && callbacks.user_codes.front() == L"WXYZ-1234",
+        "device login should expose the user code when GitHub omits complete URI");
+    Check(callbacks.opened_urls.size() == 1
+            && callbacks.opened_urls.front() == L"https://github.com/login/device?user_code=WXYZ-1234",
+        "device login should build a complete verification URL from verification_uri and user_code");
 }
 
 void TestParsesConfigWithExplicitAllowance()
@@ -745,6 +1040,11 @@ void TestLiveFetchWhenRequested()
 int main()
 {
     TestParsesConfigWithExplicitAllowance();
+    TestResolvesGitHubTokenPrecedence();
+    TestParsesDeviceCodeResponse();
+    TestParsesAccessTokenResponse();
+    TestParsesAccessTokenPendingAndSlowDownErrors();
+    TestCredentialTokenRoundTripWithTestTarget();
     TestRejectsMalformedConfigTotalCredits();
     TestRejectsNonFiniteConfigTotalCredits();
     TestRejectsUnquotedWhitespaceGarbageTotalCredits();
@@ -776,6 +1076,10 @@ int main()
     TestFetchUsesConfigTokenAndClearsSnapshotToken();
     TestFetchRequestHeadersUseCopilotInternalContract();
     TestFetchEnvTokenOverridesConfigToken();
+    TestFetchUsesStoredTokenBeforeConfigToken();
+    TestFetchEnvTokenOverridesStoredToken();
+    TestRunGitHubDeviceLoginStoresTokenAfterVerification();
+    TestRunGitHubDeviceLoginBuildsCompleteUrlWhenGitHubOmitsIt();
     TestFetchEnvTokenWorksWithoutConfigAllowance();
     TestFetchRejectsEnvTokenWithCrLf();
     TestFetchRejectsConfigTokenWithCrLf();

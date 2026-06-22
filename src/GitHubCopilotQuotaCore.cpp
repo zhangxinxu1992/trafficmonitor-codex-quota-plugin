@@ -315,6 +315,21 @@ std::optional<long long> FindJsonInt64(const std::wstring& json, const std::wstr
     }
 }
 
+std::optional<int> FindJsonInt(const std::string& json, const std::string& key)
+{
+    const auto value = FindJsonDouble(json, key);
+    if (!value.has_value())
+    {
+        return std::nullopt;
+    }
+    const auto rounded = std::round(*value);
+    if (std::fabs(*value - rounded) > 0.0001)
+    {
+        return std::nullopt;
+    }
+    return static_cast<int>(rounded);
+}
+
 std::optional<std::string> FindJsonArray(const std::string& json, const std::string& key)
 {
     const auto value_pos = FindJsonValueStart(json, key);
@@ -747,6 +762,36 @@ std::optional<PluginConfig> ParseConfigJson(const std::wstring& json, std::wstri
     return config;
 }
 
+std::optional<GitHubTokenChoice> ResolveGitHubToken(
+    const std::wstring& env_token,
+    const std::wstring& stored_token,
+    const PluginConfig& config,
+    std::wstring& error)
+{
+    error.clear();
+
+    const auto trimmed_env_token = Trim(env_token);
+    if (!trimmed_env_token.empty())
+    {
+        return GitHubTokenChoice{trimmed_env_token, GitHubTokenSource::Environment};
+    }
+
+    const auto trimmed_stored_token = Trim(stored_token);
+    if (!trimmed_stored_token.empty())
+    {
+        return GitHubTokenChoice{trimmed_stored_token, GitHubTokenSource::StoredCredential};
+    }
+
+    const auto trimmed_config_token = Trim(config.github_token);
+    if (!trimmed_config_token.empty())
+    {
+        return GitHubTokenChoice{trimmed_config_token, GitHubTokenSource::Config};
+    }
+
+    error = L"Missing GitHub token. Sign in from plugin options, set COPILOT_QUOTA_GITHUB_TOKEN, or set github_token in config.json.";
+    return std::nullopt;
+}
+
 std::optional<Allowance> ResolveAllowance(const PluginConfig& config, std::wstring& error)
 {
     error.clear();
@@ -769,6 +814,84 @@ std::optional<Allowance> ResolveAllowance(const PluginConfig& config, std::wstri
 
     error = L"GitHub Copilot quota config requires total_credits or a known plan.";
     return std::nullopt;
+}
+
+std::optional<DeviceCodeResponse> ParseDeviceCodeJson(const std::string& json, std::wstring& error)
+{
+    error.clear();
+
+    DeviceCodeResponse response;
+    const auto device_code = FindJsonStringValue(json, "device_code");
+    const auto user_code = FindJsonStringValue(json, "user_code");
+    const auto verification_uri = FindJsonStringValue(json, "verification_uri");
+    const auto expires_in = FindJsonInt(json, "expires_in");
+    const auto interval = FindJsonInt(json, "interval");
+    if (!device_code.has_value() || !user_code.has_value() || !verification_uri.has_value()
+        || !expires_in.has_value() || !interval.has_value())
+    {
+        error = L"GitHub device code response is missing required fields.";
+        return std::nullopt;
+    }
+
+    response.device_code = ToWide(*device_code);
+    response.user_code = ToWide(*user_code);
+    response.verification_uri = ToWide(*verification_uri);
+    if (const auto complete = FindJsonStringValue(json, "verification_uri_complete"))
+    {
+        response.verification_uri_complete = ToWide(*complete);
+    }
+    response.expires_in = *expires_in;
+    response.interval = *interval;
+    return response;
+}
+
+OAuthTokenResponse ParseAccessTokenJson(const std::string& json, std::wstring& error)
+{
+    error.clear();
+
+    OAuthTokenResponse response;
+    if (const auto oauth_error = FindJsonStringValue(json, "error"))
+    {
+        if (*oauth_error == "authorization_pending")
+        {
+            response.status = OAuthTokenStatus::AuthorizationPending;
+            return response;
+        }
+        if (*oauth_error == "slow_down")
+        {
+            response.status = OAuthTokenStatus::SlowDown;
+            return response;
+        }
+        if (*oauth_error == "expired_token")
+        {
+            response.status = OAuthTokenStatus::ExpiredToken;
+            return response;
+        }
+        if (*oauth_error == "access_denied")
+        {
+            response.status = OAuthTokenStatus::AccessDenied;
+            return response;
+        }
+        response.status = OAuthTokenStatus::Error;
+        response.error = ToWide(FindJsonStringValue(json, "error_description").value_or(*oauth_error));
+        error = response.error.empty() ? L"GitHub OAuth returned an unknown error." : response.error;
+        return response;
+    }
+
+    const auto access_token = FindJsonStringValue(json, "access_token");
+    if (!access_token.has_value() || Trim(ToWide(*access_token)).empty())
+    {
+        response.status = OAuthTokenStatus::Error;
+        error = L"GitHub OAuth token response does not contain access_token.";
+        response.error = error;
+        return response;
+    }
+
+    response.status = OAuthTokenStatus::Success;
+    response.access_token = Trim(ToWide(*access_token));
+    response.token_type = ToWide(FindJsonStringValue(json, "token_type").value_or(""));
+    response.scope = ToWide(FindJsonStringValue(json, "scope").value_or(""));
+    return response;
 }
 
 std::optional<UsageReport> ParseUsageJson(const std::string& json, std::wstring& error)

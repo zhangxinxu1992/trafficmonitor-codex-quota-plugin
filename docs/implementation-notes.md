@@ -52,7 +52,26 @@ The plugin follows the Win-CodexBar Copilot provider approach and queries GitHub
 Token lookup:
 
 - Prefer `COPILOT_QUOTA_GITHUB_TOKEN`.
+- Fall back to the plugin-managed GitHub OAuth token in Windows Credential Manager.
 - Fall back to optional plaintext `github_token` in `config.json`.
+
+The preferred user setup path is the plugin options dialog:
+
+1. User clicks `Sign in with GitHub`.
+2. The plugin requests a GitHub device code from `POST https://github.com/login/device/code`.
+3. The plugin displays the returned `user_code`, copies it to the clipboard, and opens the verification URL in the default browser.
+4. If GitHub omits `verification_uri_complete`, the plugin appends `user_code` to `verification_uri` so the browser can prefill the device page when supported.
+5. The plugin polls `POST https://github.com/login/oauth/access_token` until GitHub returns an OAuth token or the flow fails.
+6. The plugin verifies the token with `GET /user` and `GET /copilot_internal/user`.
+7. The plugin stores the token only after both verification requests succeed.
+
+Device flow details:
+
+- OAuth client id: `Iv1.b507a08c87ecfe98`
+- Scope: `read:user`
+- Credential Manager target: `TrafficMonitorGitHubCopilotQuota:GitHubOAuth`
+- Credential type: `CRED_TYPE_GENERIC`
+- Credential persistence: `CRED_PERSIST_LOCAL_MACHINE`
 
 Request headers intentionally mirror VS Code Copilot Chat:
 
@@ -80,7 +99,7 @@ Optional configuration is stored at:
 
 Currently useful optional config keys:
 
-- `github_token`: plaintext fallback token when the environment variable is not set.
+- `github_token`: legacy plaintext fallback token when neither the environment variable nor the stored OAuth token is set.
 - `username`: displayed in the tooltip only; no `/user` request is needed for quota fetching.
 
 TrafficMonitor may cache the Copilot plugin label in `C:\Apps\TrafficMonitor\config.ini`:
