@@ -62,6 +62,21 @@ void TestResolvesAllowanceFromPlan()
     Check(error.empty(), "successful allowance resolution should not set error");
 }
 
+void TestExplicitAllowanceOverridesPlan()
+{
+    githubcopilotquota::PluginConfig config;
+    config.plan = L"pro_plus";
+    config.total_credits = 2345.0;
+
+    std::wstring error;
+    const auto allowance = githubcopilotquota::ResolveAllowance(config, error);
+
+    Check(allowance.has_value(), "explicit allowance should resolve");
+    CheckNear(allowance->total_credits, 2345.0, "explicit total credits should override plan allowance");
+    Check(allowance->source == L"total_credits", "explicit allowance source should be total_credits");
+    Check(error.empty(), "successful explicit allowance resolution should not set error");
+}
+
 void TestRejectsMissingAllowance()
 {
     githubcopilotquota::PluginConfig config;
@@ -153,6 +168,28 @@ void TestCalculatesBillingPeriod()
     Check(period.usage_dates.front().day == 15, "first usage date should be start day");
 }
 
+void TestCalculatesBillingPeriodBeforeBillingDay()
+{
+    const long long now = 1780704000;
+    const auto period = githubcopilotquota::CalculateBillingPeriod(15, now);
+
+    Check(!period.is_calendar_month_estimate, "configured billing day before current cycle should be exact");
+    Check(period.start.year == 2026 && period.start.month == 5 && period.start.day == 15, "pre-billing-day period start should be previous cycle start");
+    Check(period.end.year == 2026 && period.end.month == 6 && period.end.day == 15, "pre-billing-day period end should be current cycle end");
+    Check(period.reset_at == 1781481600, "pre-billing-day reset timestamp should be current billing day UTC");
+}
+
+void TestCalculatesBillingPeriodWithShorterMonth()
+{
+    const long long now = 1776816000;
+    const auto period = githubcopilotquota::CalculateBillingPeriod(31, now);
+
+    Check(!period.is_calendar_month_estimate, "configured billing day 31 should be exact");
+    Check(period.start.year == 2026 && period.start.month == 3 && period.start.day == 31, "short-month period start should use prior month billing day");
+    Check(period.end.year == 2026 && period.end.month == 4 && period.end.day == 30, "short-month period end should clamp to last day");
+    Check(period.reset_at == 1777507200, "short-month reset timestamp should be clamped billing day UTC");
+}
+
 void TestCalculatesCalendarMonthEstimate()
 {
     const long long now = 1782086400;
@@ -194,6 +231,7 @@ int main()
 {
     TestParsesConfigWithExplicitAllowance();
     TestResolvesAllowanceFromPlan();
+    TestExplicitAllowanceOverridesPlan();
     TestRejectsMissingAllowance();
     TestParsesUsageReport();
     TestParsesUserLogin();
@@ -202,6 +240,8 @@ int main()
     TestClampsOverage();
     TestFormatsQuotaValue();
     TestCalculatesBillingPeriod();
+    TestCalculatesBillingPeriodBeforeBillingDay();
+    TestCalculatesBillingPeriodWithShorterMonth();
     TestCalculatesCalendarMonthEstimate();
     TestBuildsUsagePaths();
     TestLiveFetchWhenRequested();
