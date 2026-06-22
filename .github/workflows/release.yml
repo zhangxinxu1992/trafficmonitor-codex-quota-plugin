@@ -23,9 +23,9 @@ jobs:
       - name: Check tag matches plugin version
         shell: pwsh
         run: |
-          $versionHeader = Get-Content .\src\PluginVersion.h -Raw
-          if ($versionHeader -notmatch 'kTrafficMonitorQuotaPluginVersion\[\]\s*=\s*L"([^"]+)"') {
-            throw 'Could not read plugin version from src/PluginVersion.h.'
+          $versionHeader = Get-Content .\src\PluginVersionResource.h -Raw
+          if ($versionHeader -notmatch 'TRAFFICMONITOR_QUOTA_PLUGIN_VERSION_TEXT\s+"([^"]+)"') {
+            throw 'Could not read plugin version from src/PluginVersionResource.h.'
           }
 
           $version = $Matches[1]
