@@ -57,7 +57,8 @@ Token lookup:
 API calls:
 
 - `GET https://api.github.com/user` when `username` is omitted.
-- `GET https://api.github.com/users/{username}/settings/billing/ai_credit/usage`.
+- With `billing_day`, daily calls: `GET https://api.github.com/users/{username}/settings/billing/ai_credit/usage?year=YYYY&month=M&day=D`.
+- Without `billing_day`, monthly call: `GET https://api.github.com/users/{username}/settings/billing/ai_credit/usage?year=YYYY&month=M`.
 
 Allowance resolution:
 

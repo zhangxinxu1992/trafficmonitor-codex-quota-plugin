@@ -31,7 +31,7 @@ Example taskbar values:
 
 The value text starts with a regular space, for example label `GC:` plus value ` 82% 1.2kcr 12d`, because TrafficMonitor trims ordinary whitespace at plugin-label edges.
 
-Configuration is stored at `%APPDATA%\TrafficMonitorGitHubCopilotQuota\config.json`. Use `plan` and `billing_day` when GitHub does not return enough billing-cycle detail:
+Configuration is stored at `%APPDATA%\TrafficMonitorGitHubCopilotQuota\config.json`. It must include either `plan` or `total_credits` as the allowance source. Add `billing_day` when you want exact billing-cycle usage and a reset countdown:
 
 ```json
 {
@@ -40,7 +40,7 @@ Configuration is stored at `%APPDATA%\TrafficMonitorGitHubCopilotQuota\config.js
 }
 ```
 
-Use `total_credits` for a custom allowance:
+Use `total_credits` instead of `plan` for a custom allowance:
 
 ```json
 {
@@ -50,6 +50,8 @@ Use `total_credits` for a custom allowance:
 ```
 
 Set `COPILOT_QUOTA_GITHUB_TOKEN` for authentication. A plaintext `github_token` value in `config.json` is supported only as a fallback.
+
+`billing_day` is optional. Without it, the plugin uses a current calendar month estimate and omits the exact reset countdown.
 
 Project-specific implementation notes and known pitfalls are in `docs/implementation-notes.md`.
 
@@ -90,9 +92,9 @@ Copy-Item -Force '.\build\x64\Release\TrafficMonitorCodexQuota.dll' 'C:\Apps\Tra
 Copy-Item -Force '.\build\x64\Release\TrafficMonitorGitHubCopilotQuota.dll' 'C:\Apps\TrafficMonitor\plugins\TrafficMonitorGitHubCopilotQuota.dll'
 ```
 
-Restart TrafficMonitor after copying the DLL. Enable `CodexQuota5h` and `CodexQuotaWeek` in the taskbar display item settings, or set:
+Restart TrafficMonitor after copying the DLL. Enable `CodexQuota5h`, `CodexQuotaWeek`, and `GitHubCopilotQuotaAI` in the taskbar display item settings, or set:
 
 ```ini
 [task_bar]
-plugin_display_item = CodexQuota5h,CodexQuotaWeek
+plugin_display_item = CodexQuota5h,CodexQuotaWeek,GitHubCopilotQuotaAI
 ```
