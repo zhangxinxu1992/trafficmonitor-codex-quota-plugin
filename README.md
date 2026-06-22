@@ -81,7 +81,6 @@ $env:CODEX_QUOTA_RUN_LIVE_TEST = '1'
 
 $env:GITHUB_COPILOT_QUOTA_RUN_LIVE_TEST = '1'
 .\build\x64\Release\GitHubCopilotQuotaTests.exe
-.\build\x64\Release\GitHubCopilotPluginSmokeTests.exe
 ```
 
 ## Install
