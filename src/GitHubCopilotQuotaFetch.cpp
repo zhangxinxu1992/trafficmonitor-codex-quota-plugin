@@ -107,6 +107,11 @@ std::wstring JoinPath(std::wstring base, const wchar_t* child)
     return base;
 }
 
+bool ContainsHeaderControlCharacters(const std::wstring& value)
+{
+    return value.find_first_of(L"\r\n") != std::wstring::npos;
+}
+
 bool ReadFileUtf8AsWide(const std::wstring& path, std::wstring& content, std::wstring& error)
 {
     const HANDLE file = CreateFileW(
@@ -401,6 +406,11 @@ FetchResult FetchQuotaSnapshotFromConfigJson(
     if (token.empty())
     {
         result.error = L"Missing GitHub token. Set COPILOT_QUOTA_GITHUB_TOKEN or github_token in config.json.";
+        return result;
+    }
+    if (ContainsHeaderControlCharacters(token))
+    {
+        result.error = L"GitHub token contains invalid characters.";
         return result;
     }
 

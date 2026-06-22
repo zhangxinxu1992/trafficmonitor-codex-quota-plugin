@@ -500,6 +500,25 @@ void TestFetchUsesConfigTokenAndClearsSnapshotToken()
     CheckNear(result.snapshot.usage.consumed_credits, 8.0, "daily usage should be summed");
 }
 
+void TestFetchRequestHeadersUseGitHubContract()
+{
+    FakeGitHubTransport fake;
+    fake.responses.push_back(FakeUsageResponse(2.0));
+
+    const auto result = githubcopilotquota::FetchQuotaSnapshotFromConfigJson(
+        LR"({"github_token":"config-token","username":"octocat","total_credits":100})",
+        L"",
+        1782086400,
+        FakeGitHubRequest,
+        &fake);
+
+    Check(result.success, "fetch helper should succeed when checking header contract");
+    Check(!fake.requests.empty(), "fetch helper should capture a request for header contract");
+    Check(!fake.requests.empty() && fake.requests.front().accept == L"application/vnd.github+json", "GitHub request Accept header should use GitHub JSON media type");
+    Check(!fake.requests.empty() && fake.requests.front().api_version == L"2026-03-10", "GitHub request API version header should match contract");
+    Check(!fake.requests.empty() && fake.requests.front().user_agent == L"TrafficMonitorGitHubCopilotQuota/1.0", "GitHub request User-Agent header should match contract");
+}
+
 void TestFetchEnvTokenOverridesConfigToken()
 {
     FakeGitHubTransport fake;
@@ -515,6 +534,40 @@ void TestFetchEnvTokenOverridesConfigToken()
     Check(result.success, "fetch helper should succeed with env token");
     Check(fake.requests.size() == 1, "calendar estimate should issue one request");
     Check(!fake.requests.empty() && fake.requests.front().authorization == L"Bearer env-token", "env token should override config token");
+}
+
+void TestFetchRejectsEnvTokenWithCrLf()
+{
+    FakeGitHubTransport fake;
+
+    const auto result = githubcopilotquota::FetchQuotaSnapshotFromConfigJson(
+        LR"({"github_token":"config-token","username":"octocat","total_credits":100})",
+        L"env-token\r\nX-Injected: value",
+        1782086400,
+        FakeGitHubRequest,
+        &fake);
+
+    Check(!result.success, "env token with CR/LF should fail fetch helper");
+    Check(result.error == L"GitHub token contains invalid characters.", "env token CR/LF error should be stable and non-secret");
+    Check(result.error.find(L"env-token") == std::wstring::npos, "env token CR/LF error should not echo token");
+    Check(fake.requests.empty(), "env token with CR/LF should be rejected before transport request");
+}
+
+void TestFetchRejectsConfigTokenWithCrLf()
+{
+    FakeGitHubTransport fake;
+
+    const auto result = githubcopilotquota::FetchQuotaSnapshotFromConfigJson(
+        L"{\"github_token\":\"config-token\nX-Injected: value\",\"username\":\"octocat\",\"total_credits\":100}",
+        L"",
+        1782086400,
+        FakeGitHubRequest,
+        &fake);
+
+    Check(!result.success, "config token with CR/LF should fail fetch helper");
+    Check(result.error == L"GitHub token contains invalid characters.", "config token CR/LF error should be stable and non-secret");
+    Check(result.error.find(L"config-token") == std::wstring::npos, "config token CR/LF error should not echo token");
+    Check(fake.requests.empty(), "config token with CR/LF should be rejected before transport request");
 }
 
 void TestFetchMissingUsernameCallsUserEndpoint()
@@ -674,7 +727,10 @@ int main()
     TestCalculatesCalendarMonthEstimate();
     TestBuildsUsagePaths();
     TestFetchUsesConfigTokenAndClearsSnapshotToken();
+    TestFetchRequestHeadersUseGitHubContract();
     TestFetchEnvTokenOverridesConfigToken();
+    TestFetchRejectsEnvTokenWithCrLf();
+    TestFetchRejectsConfigTokenWithCrLf();
     TestFetchMissingUsernameCallsUserEndpoint();
     TestFetchConfiguredUsernameSkipsUserEndpoint();
     TestFetchAuthErrorsUseStableMessage();
