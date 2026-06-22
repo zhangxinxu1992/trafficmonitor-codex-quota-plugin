@@ -214,7 +214,7 @@ std::optional<std::wstring> FindJsonScalarText(const std::wstring& json, const s
         return ParseJsonStringAt(json, *value_pos);
     }
 
-    const auto value_end = json.find_first_of(L",}]\r\n\t ", *value_pos);
+    const auto value_end = json.find_first_of(L",}]", *value_pos);
     return Trim(json.substr(*value_pos, value_end == std::wstring::npos ? std::wstring::npos : value_end - *value_pos));
 }
 
@@ -231,7 +231,7 @@ std::optional<std::string> FindJsonScalarText(const std::string& json, const std
         return ParseJsonStringAt(json, *value_pos);
     }
 
-    const auto value_end = json.find_first_of(",}]\r\n\t ", *value_pos);
+    const auto value_end = json.find_first_of(",}]", *value_pos);
     return Trim(json.substr(*value_pos, value_end == std::string::npos ? std::string::npos : value_end - *value_pos));
 }
 

@@ -63,6 +63,21 @@ void TestRejectsMalformedConfigTotalCredits()
     Check(!error.empty(), "malformed total_credits should set error");
 }
 
+void TestRejectsUnquotedWhitespaceGarbageTotalCredits()
+{
+    std::wstring error;
+    const auto config = githubcopilotquota::ParseConfigJson(
+        LR"({
+            "username": "octocat",
+            "plan": "pro",
+            "total_credits": 1500 abc
+        })",
+        error);
+
+    Check(!config.has_value(), "unquoted total_credits with whitespace garbage should fail config parsing");
+    Check(!error.empty(), "unquoted total_credits with whitespace garbage should set error");
+}
+
 void TestRejectsFractionalBillingDay()
 {
     std::wstring error;
@@ -77,6 +92,22 @@ void TestRejectsFractionalBillingDay()
 
     Check(!config.has_value(), "fractional billing_day should fail config parsing");
     Check(!error.empty(), "fractional billing_day should set error");
+}
+
+void TestRejectsUnquotedWhitespaceGarbageBillingDay()
+{
+    std::wstring error;
+    const auto config = githubcopilotquota::ParseConfigJson(
+        LR"({
+            "username": "octocat",
+            "plan": "pro",
+            "total_credits": 1500,
+            "billing_day": 15 abc
+        })",
+        error);
+
+    Check(!config.has_value(), "unquoted billing_day with whitespace garbage should fail config parsing");
+    Check(!error.empty(), "unquoted billing_day with whitespace garbage should set error");
 }
 
 void TestResolvesAllowanceFromPlan()
@@ -155,6 +186,22 @@ void TestRejectsMalformedUsageNetQuantity()
 
     Check(!usage.has_value(), "malformed netQuantity should fail usage parsing");
     Check(!error.empty(), "malformed netQuantity should set error");
+}
+
+void TestRejectsUnquotedWhitespaceGarbageUsageNetQuantity()
+{
+    std::wstring error;
+    const auto usage = githubcopilotquota::ParseUsageJson(
+        R"({
+            "user": "octocat",
+            "usageItems": [
+                { "product": "Copilot AI Credits", "sku": "AI Credit", "netQuantity": 7.25 cr }
+            ]
+        })",
+        error);
+
+    Check(!usage.has_value(), "unquoted netQuantity with whitespace garbage should fail usage parsing");
+    Check(!error.empty(), "unquoted netQuantity with whitespace garbage should set error");
 }
 
 void TestParsesUserLogin()
@@ -287,12 +334,15 @@ int main()
 {
     TestParsesConfigWithExplicitAllowance();
     TestRejectsMalformedConfigTotalCredits();
+    TestRejectsUnquotedWhitespaceGarbageTotalCredits();
     TestRejectsFractionalBillingDay();
+    TestRejectsUnquotedWhitespaceGarbageBillingDay();
     TestResolvesAllowanceFromPlan();
     TestExplicitAllowanceOverridesPlan();
     TestRejectsMissingAllowance();
     TestParsesUsageReport();
     TestRejectsMalformedUsageNetQuantity();
+    TestRejectsUnquotedWhitespaceGarbageUsageNetQuantity();
     TestParsesUserLogin();
     TestFormatsCreditCounts();
     TestCalculatesRemainingQuota();
