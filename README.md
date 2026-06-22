@@ -14,6 +14,8 @@ Example taskbar values:
 
 The suffix after the percent is the countdown until that quota window resets. The displayed value includes a leading space because TrafficMonitor trims ordinary whitespace at the edges of plugin labels. The plugin reserves extra width so values such as `6d 23h` are not truncated.
 
+The Codex plugin reads the local Codex CLI auth file and calls the same ChatGPT backend usage endpoint used by Win-CodexBar.
+
 ## GitHub Copilot Quota Plugin
 
 This repository also builds `TrafficMonitorGitHubCopilotQuota.dll`, a separate x64 TrafficMonitor plugin for GitHub Copilot quota.
@@ -48,8 +50,6 @@ Use `total_credits` for a custom allowance:
 ```
 
 Set `COPILOT_QUOTA_GITHUB_TOKEN` for authentication. A plaintext `github_token` value in `config.json` is supported only as a fallback.
-
-The plugin reads the local Codex CLI auth file and calls the same ChatGPT backend usage endpoint used by Win-CodexBar.
 
 Project-specific implementation notes and known pitfalls are in `docs/implementation-notes.md`.
 
