@@ -19,8 +19,8 @@ The default display uses remaining quota and a compact reset countdown. Plugin
 options can switch the percentage to used quota, hide reset information, or
 show the reset suffix as local reset time instead of a countdown. The GitHub
 Copilot plugin can also show or hide remaining credits. When TrafficMonitor's
-resource usage graph is enabled, the plugins provide graph values that match
-the selected remaining or used percentage display.
+resource usage graph is enabled, the plugins provide graph values for the used
+quota percentage, so low remaining quota produces a mostly filled graph.
 
 Example taskbar text:
 

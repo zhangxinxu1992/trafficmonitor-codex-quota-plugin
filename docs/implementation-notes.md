@@ -50,9 +50,9 @@ Supported Codex display config keys:
 Missing config uses `remaining` plus `countdown`, with reset info visible.
 
 Codex items implement TrafficMonitor's resource usage graph hook. The returned
-graph value is a normalized `0.0` to `1.0` value for the percentage currently
-shown in text: remaining mode returns remaining quota, and used mode returns
-used quota. Items return `0.0` until a successful snapshot is available.
+graph value is a normalized `0.0` to `1.0` value for used quota, regardless of
+whether the visible text is configured to show remaining quota or used quota.
+Items return `0.0` until a successful snapshot is available.
 
 ## TrafficMonitor GitHub Copilot Quota Plugin
 
@@ -125,9 +125,9 @@ Currently useful optional config keys:
 - `show_remaining_credits`: `true` or `false`; the credit count is always remaining credits when shown.
 
 The GitHub Copilot item also implements TrafficMonitor's resource usage graph
-hook. Its graph value follows `quota_display`: remaining mode uses
-`remaining_percent`, and used mode uses `100 - remaining_percent`. It returns
-`0.0` before the first successful snapshot.
+hook. Its graph value always represents used quota as
+`100 - remaining_percent`, regardless of `quota_display`. It returns `0.0`
+before the first successful snapshot.
 
 TrafficMonitor may cache the Copilot plugin label in `C:\Apps\TrafficMonitor\config.ini`:
 

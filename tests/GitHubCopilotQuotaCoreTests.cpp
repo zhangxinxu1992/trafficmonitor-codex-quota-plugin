@@ -572,8 +572,12 @@ void TestFormatsResourceGraphValueWithDisplayOptions()
     const auto quota = githubcopilotquota::CalculateQuota(1500.0, 270.0);
 
     githubcopilotquota::DisplayOptions options;
-    CheckNear(githubcopilotquota::FormatResourceGraphValue(quota, options), 0.82,
-        "remaining display should graph remaining GitHub Copilot quota");
+    CheckNear(githubcopilotquota::FormatResourceGraphValue(quota, options), 0.18,
+        "remaining display should graph used GitHub Copilot quota");
+
+    const auto almost_empty_quota = githubcopilotquota::CalculateQuotaFromRemaining(100.0, 4.0, 4.0);
+    CheckNear(githubcopilotquota::FormatResourceGraphValue(almost_empty_quota, options), 0.96,
+        "4 percent remaining GitHub Copilot quota should graph 96 percent used");
 
     options.quota_display = githubcopilotquota::QuotaDisplayMode::Used;
     CheckNear(githubcopilotquota::FormatResourceGraphValue(quota, options), 0.18,

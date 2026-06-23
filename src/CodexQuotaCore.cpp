@@ -576,10 +576,8 @@ std::wstring FormatWindowText(double used_percent, long long reset_at, long long
 
 float FormatResourceGraphValue(double used_percent, const DisplayOptions& options)
 {
-    const auto graph_percent = options.quota_display == QuotaDisplayMode::Used
-        ? used_percent
-        : 100.0 - used_percent;
-    return ClampPercentForGraph(graph_percent);
+    (void)options;
+    return ClampPercentForGraph(used_percent);
 }
 
 std::wstring FormatResetCountdown(long long reset_at, long long now)

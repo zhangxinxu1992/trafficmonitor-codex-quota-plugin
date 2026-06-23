@@ -1051,9 +1051,7 @@ std::wstring FormatQuotaValue(const Quota& quota, long long reset_at, long long 
 
 float FormatResourceGraphValue(const Quota& quota, const DisplayOptions& options)
 {
-    const auto graph_percent = options.quota_display == QuotaDisplayMode::Used
-        ? 100.0 - quota.remaining_percent
-        : quota.remaining_percent;
-    return ClampPercentForGraph(graph_percent);
+    (void)options;
+    return ClampPercentForGraph(100.0 - quota.remaining_percent);
 }
 }

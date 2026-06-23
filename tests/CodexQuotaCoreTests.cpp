@@ -192,8 +192,10 @@ void TestFormatsWindowTextWithDisplayOptions()
 void TestFormatsResourceGraphValueWithDisplayOptions()
 {
     codexquota::DisplayOptions options;
-    Check(codexquota::FormatResourceGraphValue(24.0, options) == 0.76f,
-        "remaining display should graph remaining Codex quota");
+    Check(codexquota::FormatResourceGraphValue(24.0, options) == 0.24f,
+        "remaining display should graph used Codex quota");
+    Check(codexquota::FormatResourceGraphValue(96.0, options) == 0.96f,
+        "4 percent remaining Codex quota should graph 96 percent used");
 
     options.quota_display = codexquota::QuotaDisplayMode::Used;
     Check(codexquota::FormatResourceGraphValue(24.0, options) == 0.24f,

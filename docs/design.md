@@ -12,10 +12,10 @@ The plugin exposes two display items:
 Values use compact text, for example `CX 5h: 76% 42m` or `CX 7d: 90% 6d 1h`. By default the percentage is remaining quota and the suffix is the countdown until that quota window resets. The user can switch the percentage to used quota, hide reset information, or show visible reset information as local reset time. The taskbar value text starts with a regular space so spacing remains visible after TrafficMonitor trims plugin-label edges. `GetItemValueSampleText()` follows the current display mode: countdown mode uses compact samples such as ` 100% 4h 59m` or ` 100% 6d 23h`, reset-time mode reserves enough width for values such as ` 100% 12-31 23:59`, and hidden reset mode reserves only ` 100%`.
 
 When TrafficMonitor's taskbar resource usage graph is enabled, both Codex
-items opt into the host graph API. The graph value follows the same quota mode
-as the text: remaining mode graphs `100 - used_percent`; used mode graphs
-`used_percent`. Before the first successful refresh, or when a window is not
-available, the graph value is `0.0`.
+items opt into the host graph API. The graph value always represents used
+quota: it returns `used_percent` regardless of whether the text is configured
+to show remaining or used quota. Before the first successful refresh, or when a
+window is not available, the graph value is `0.0`.
 
 ## Data Source
 

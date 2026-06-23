@@ -13,7 +13,7 @@
 | `TrafficMonitorCodexQuota.dll` | `CX 5h:` 和 `CX 7d:` 两个 Codex 额度窗口 | 先使用 Codex CLI 完成登录。 |
 | `TrafficMonitorGitHubCopilotQuota.dll` | `GC:` GitHub Copilot 额度 | 打开插件选项，点击 `Sign in with GitHub` 登录。 |
 
-默认显示剩余额度和紧凑的重置倒计时。插件选项可以切换为已用额度、隐藏重置信息，或把重置信息从倒计时切换为本地重置时间。GitHub Copilot 插件还可以选择是否显示剩余 credits。启用 TrafficMonitor 的资源占用图后，插件会提供与当前剩余/已用百分比显示一致的图形数值。
+默认显示剩余额度和紧凑的重置倒计时。插件选项可以切换为已用额度、隐藏重置信息，或把重置信息从倒计时切换为本地重置时间。GitHub Copilot 插件还可以选择是否显示剩余 credits。启用 TrafficMonitor 的资源占用图后，插件会提供已用额度百分比作为图形数值，因此剩余额度很低时柱状图会接近填满。
 
 任务栏显示示例：
 
