@@ -189,6 +189,21 @@ void TestFormatsWindowTextWithDisplayOptions()
         "hidden Codex reset info should leave only the quota percent");
 }
 
+void TestFormatsResourceGraphValueWithDisplayOptions()
+{
+    codexquota::DisplayOptions options;
+    Check(codexquota::FormatResourceGraphValue(24.0, options) == 0.76f,
+        "remaining display should graph remaining Codex quota");
+
+    options.quota_display = codexquota::QuotaDisplayMode::Used;
+    Check(codexquota::FormatResourceGraphValue(24.0, options) == 0.24f,
+        "used display should graph used Codex quota");
+    Check(codexquota::FormatResourceGraphValue(-5.0, options) == 0.0f,
+        "negative Codex graph values should clamp to zero");
+    Check(codexquota::FormatResourceGraphValue(125.0, options) == 1.0f,
+        "over-budget Codex graph values should clamp to one");
+}
+
 void TestFormatsCountdown()
 {
     Check(codexquota::FormatResetCountdown(1700000000, 1700000000) == L"now", "past reset should be now");
@@ -228,6 +243,7 @@ int main()
     TestFormatsRemainingWindowText();
     TestParsesDisplayConfig();
     TestFormatsWindowTextWithDisplayOptions();
+    TestFormatsResourceGraphValueWithDisplayOptions();
     TestFormatsCountdown();
     TestLiveFetchWhenRequested();
 

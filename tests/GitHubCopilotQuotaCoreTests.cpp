@@ -567,6 +567,23 @@ void TestFormatsQuotaValueWithDisplayOptions()
         "hidden GitHub Copilot reset info and credits should leave only the quota percent");
 }
 
+void TestFormatsResourceGraphValueWithDisplayOptions()
+{
+    const auto quota = githubcopilotquota::CalculateQuota(1500.0, 270.0);
+
+    githubcopilotquota::DisplayOptions options;
+    CheckNear(githubcopilotquota::FormatResourceGraphValue(quota, options), 0.82,
+        "remaining display should graph remaining GitHub Copilot quota");
+
+    options.quota_display = githubcopilotquota::QuotaDisplayMode::Used;
+    CheckNear(githubcopilotquota::FormatResourceGraphValue(quota, options), 0.18,
+        "used display should graph used GitHub Copilot quota");
+
+    const auto over_remaining = githubcopilotquota::CalculateQuotaFromRemaining(100.0, 80.0, 125.0);
+    CheckNear(githubcopilotquota::FormatResourceGraphValue(over_remaining, options), 0.0,
+        "negative used GitHub Copilot graph values should clamp to zero");
+}
+
 void TestFormatsMonthlyResetCountdownInDays()
 {
     const long long now = 1782086400;
@@ -779,6 +796,7 @@ int main()
     TestClampsOverage();
     TestFormatsQuotaValue();
     TestFormatsQuotaValueWithDisplayOptions();
+    TestFormatsResourceGraphValueWithDisplayOptions();
     TestFormatsMonthlyResetCountdownInDays();
     TestFetchRejectsLegacyConfigToken();
     TestFetchUsesStoredTokenAndBuildsSnapshot();

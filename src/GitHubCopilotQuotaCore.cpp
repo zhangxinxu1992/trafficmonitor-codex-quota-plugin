@@ -47,6 +47,19 @@ bool IsJsonWhitespace(char ch)
     return ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n';
 }
 
+float ClampPercentForGraph(double percent)
+{
+    if (!std::isfinite(percent) || percent < 0.0)
+    {
+        return 0.0f;
+    }
+    if (percent > 100.0)
+    {
+        return 1.0f;
+    }
+    return static_cast<float>(percent / 100.0);
+}
+
 bool HasOnlyTrailingWhitespace(const std::wstring& value, std::size_t start)
 {
     for (auto index = start; index < value.size(); ++index)
@@ -1034,5 +1047,13 @@ std::wstring FormatQuotaValue(const Quota& quota, long long reset_at, long long 
             : FormatResetCountdown(reset_at, now);
     }
     return value;
+}
+
+float FormatResourceGraphValue(const Quota& quota, const DisplayOptions& options)
+{
+    const auto graph_percent = options.quota_display == QuotaDisplayMode::Used
+        ? 100.0 - quota.remaining_percent
+        : quota.remaining_percent;
+    return ClampPercentForGraph(graph_percent);
 }
 }

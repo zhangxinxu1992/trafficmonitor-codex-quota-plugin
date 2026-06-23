@@ -936,6 +936,13 @@ public:
 
     const wchar_t* GetItemValueSampleText() const override;
 
+    int IsDrawResourceUsageGraph() const override
+    {
+        return 1;
+    }
+
+    float GetResourceUsageGraphValue() const override;
+
 private:
     mutable std::wstring m_value;
     mutable std::wstring m_sample;
@@ -1091,6 +1098,16 @@ public:
         return BuildGitHubCopilotSampleText(m_config.display);
     }
 
+    float ResourceGraphValue() const
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        if (m_has_snapshot)
+        {
+            return githubcopilotquota::FormatResourceGraphValue(m_snapshot.quota, m_config.display);
+        }
+        return 0.0f;
+    }
+
 private:
     GitHubCopilotQuotaPlugin()
     {
@@ -1243,6 +1260,11 @@ const wchar_t* GitHubCopilotQuotaItem::GetItemValueSampleText() const
 {
     m_sample = GitHubCopilotQuotaPlugin::Instance().SampleText();
     return m_sample.c_str();
+}
+
+float GitHubCopilotQuotaItem::GetResourceUsageGraphValue() const
+{
+    return GitHubCopilotQuotaPlugin::Instance().ResourceGraphValue();
 }
 }
 

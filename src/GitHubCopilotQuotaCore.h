@@ -121,4 +121,5 @@ std::wstring FormatResetCountdown(long long reset_at, long long now);
 std::wstring FormatResetTime(long long reset_at, long long now);
 std::wstring FormatQuotaValue(const Quota& quota, long long reset_at, long long now);
 std::wstring FormatQuotaValue(const Quota& quota, long long reset_at, long long now, const DisplayOptions& options);
+float FormatResourceGraphValue(const Quota& quota, const DisplayOptions& options);
 }

@@ -59,6 +59,7 @@ std::wstring FormatPercent(double used_percent);
 std::wstring FormatRemainingPercent(double used_percent);
 std::wstring FormatRemainingWindowText(double used_percent, long long reset_at, long long now);
 std::wstring FormatWindowText(double used_percent, long long reset_at, long long now, const DisplayOptions& options);
+float FormatResourceGraphValue(double used_percent, const DisplayOptions& options);
 std::wstring FormatResetCountdown(long long reset_at, long long now);
 std::wstring FormatResetTime(long long reset_at, long long now);
 }

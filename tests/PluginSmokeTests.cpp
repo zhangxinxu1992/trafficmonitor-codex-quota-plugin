@@ -316,6 +316,8 @@ int main()
             Check(std::wstring(five_hour->GetItemLableText()) == L"CX 5h:", "5h label should use the CX prefix");
             Check(std::wstring(five_hour->GetItemValueSampleText()) == L" 100%", "5h sample should omit hidden reset info");
             Check(std::wstring(five_hour->GetItemValueText()) == L" ...", "5h initial value should include visible spacing before loading");
+            Check(five_hour->IsDrawResourceUsageGraph() == 1, "5h item should opt into TrafficMonitor resource graph drawing");
+            Check(five_hour->GetResourceUsageGraphValue() == 0.0f, "5h graph value should be empty before first refresh");
         }
         if (weekly != nullptr)
         {
@@ -324,6 +326,8 @@ int main()
             Check(std::wstring(weekly->GetItemLableText()) == L"CX 7d:", "weekly label should use the CX prefix");
             Check(std::wstring(weekly->GetItemValueSampleText()) == L" 100%", "weekly sample should omit hidden reset info");
             Check(std::wstring(weekly->GetItemValueText()) == L" ...", "weekly initial value should include visible spacing before loading");
+            Check(weekly->IsDrawResourceUsageGraph() == 1, "weekly item should opt into TrafficMonitor resource graph drawing");
+            Check(weekly->GetResourceUsageGraphValue() == 0.0f, "weekly graph value should be empty before first refresh");
         }
 
         if (RunLiveRefresh() && five_hour != nullptr && weekly != nullptr)

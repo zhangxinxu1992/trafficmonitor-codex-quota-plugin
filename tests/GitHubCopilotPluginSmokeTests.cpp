@@ -349,6 +349,8 @@ int main()
             const std::wstring initial_value(item->GetItemValueText());
             Check(initial_value == L" ...", "initial value should include visible spacing before loading");
             Check(StartsWith(initial_value, L" "), "initial value should start with visible spacing");
+            Check(item->IsDrawResourceUsageGraph() == 1, "GitHub Copilot item should opt into TrafficMonitor resource graph drawing");
+            Check(item->GetResourceUsageGraphValue() == 0.0f, "GitHub Copilot graph value should be empty before first refresh");
         }
     }
 

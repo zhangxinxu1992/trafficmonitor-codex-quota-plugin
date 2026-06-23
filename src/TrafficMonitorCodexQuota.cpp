@@ -636,6 +636,13 @@ public:
 
     const wchar_t* GetItemValueSampleText() const override;
 
+    int IsDrawResourceUsageGraph() const override
+    {
+        return 1;
+    }
+
+    float GetResourceUsageGraphValue() const override;
+
 private:
     WindowKind m_kind;
     mutable std::wstring m_value;
@@ -765,6 +772,17 @@ public:
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         return BuildCodexSampleText(kind, m_config.display);
+    }
+
+    float ResourceGraphValue(WindowKind kind) const
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        const auto* window = SelectWindow(kind);
+        if (m_has_usage && window != nullptr && window->present)
+        {
+            return codexquota::FormatResourceGraphValue(window->used_percent, m_config.display);
+        }
+        return 0.0f;
     }
 
 private:
@@ -904,6 +922,11 @@ const wchar_t* CodexQuotaItem::GetItemValueSampleText() const
 {
     m_sample = CodexQuotaPlugin::Instance().SampleText(m_kind);
     return m_sample.c_str();
+}
+
+float CodexQuotaItem::GetResourceUsageGraphValue() const
+{
+    return CodexQuotaPlugin::Instance().ResourceGraphValue(m_kind);
 }
 }
 
