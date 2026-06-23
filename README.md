@@ -73,7 +73,7 @@ Project-specific implementation notes and known pitfalls are in `docs/implementa
 
 ## Versioning
 
-Both plugin DLLs share one release version in `src/PluginVersion.h`. Bump that version once for each tagged repository release, then tag the release as `v<version>`, for example `v1.0`.
+Both plugin DLLs share one release version in `src/PluginVersion.h`. Bump that version once for each tagged repository release, then tag the release as `v<version>`, for example `v1.1`.
 
 ## Build
 
