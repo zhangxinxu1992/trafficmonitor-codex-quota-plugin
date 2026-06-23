@@ -16,8 +16,9 @@ TrafficMonitor project.
 | `TrafficMonitorGitHubCopilotQuota.dll` | `GC:` GitHub Copilot quota | Open the plugin options and choose `Sign in with GitHub`. |
 
 The default display uses remaining quota and a compact reset countdown. Plugin
-options can switch the percentage to used quota and the reset suffix to local
-reset time. The GitHub Copilot plugin can also show or hide remaining credits.
+options can switch the percentage to used quota, hide reset information, or
+show the reset suffix as local reset time instead of a countdown. The GitHub
+Copilot plugin can also show or hide remaining credits.
 
 Example taskbar text:
 
@@ -80,7 +81,8 @@ For GitHub Copilot quota, open the TrafficMonitor plugin options dialog and use
 Manager as a TrafficMonitor-scoped local credential.
 
 Each plugin's options dialog controls whether to show remaining quota or used
-quota, and whether reset information is shown as a countdown or a local time.
+quota, whether reset information is shown at all, and whether visible reset
+information is shown as a countdown or a local time.
 
 ## Release Package
 

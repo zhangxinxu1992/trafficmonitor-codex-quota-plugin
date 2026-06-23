@@ -147,14 +147,23 @@ void TestParsesDisplayConfig()
     const auto config = codexquota::ParseConfigJson(
         LR"({
             "quota_display": "used",
-            "reset_display": "time"
+            "reset_display": "time",
+            "show_reset_info": false
         })",
         error);
 
     Check(config.has_value(), "Codex display config should parse");
     Check(config->display.quota_display == codexquota::QuotaDisplayMode::Used, "Codex quota display should parse as used");
     Check(config->display.reset_display == codexquota::ResetDisplayMode::Time, "Codex reset display should parse as time");
+    Check(!config->display.show_reset_info, "Codex reset info display flag should parse");
     Check(error.empty(), "successful Codex display config parse should not set error");
+
+    error.clear();
+    const auto default_config = codexquota::ParseConfigJson(L"{}", error);
+    Check(default_config.has_value(), "empty Codex display config should parse");
+    Check(default_config->display.show_reset_info, "Codex reset info should default to visible");
+    Check(codexquota::SerializeConfigJson(*config).find(L"\"show_reset_info\": false") != std::wstring::npos,
+        "Codex config serialization should persist hidden reset info");
 }
 
 void TestFormatsWindowTextWithDisplayOptions()
@@ -174,6 +183,10 @@ void TestFormatsWindowTextWithDisplayOptions()
         "same-day reset time should show local HH:MM");
     Check(codexquota::FormatWindowText(24.4, next_day_reset, now, options) == L"76% 06-23 08:05",
         "cross-day reset time should show local month-day and time");
+
+    options.show_reset_info = false;
+    Check(codexquota::FormatWindowText(24.4, next_day_reset, now, options) == L"76%",
+        "hidden Codex reset info should leave only the quota percent");
 }
 
 void TestFormatsCountdown()

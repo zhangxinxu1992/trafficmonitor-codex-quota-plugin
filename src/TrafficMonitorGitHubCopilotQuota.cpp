@@ -23,6 +23,7 @@ constexpr int kQuotaUsedRadio = 1005;
 constexpr int kResetCountdownRadio = 1006;
 constexpr int kResetTimeRadio = 1007;
 constexpr int kShowCreditsCheckbox = 1008;
+constexpr int kShowResetInfoCheckbox = 1009;
 constexpr const wchar_t* kOptionsDialogClassName = L"TrafficMonitorGitHubCopilotQuotaOptions";
 
 class GitHubCopilotQuotaPlugin;
@@ -178,6 +179,7 @@ bool SameDisplayOptions(const githubcopilotquota::DisplayOptions& lhs, const git
 {
     return lhs.quota_display == rhs.quota_display
         && lhs.reset_display == rhs.reset_display
+        && lhs.show_reset_info == rhs.show_reset_info
         && lhs.show_remaining_credits == rhs.show_remaining_credits;
 }
 
@@ -316,11 +318,18 @@ void CaptureDisplayOptions(HWND window, OptionsDialogState& state)
     state.config.display.quota_display = IsDlgButtonChecked(window, kQuotaUsedRadio) == BST_CHECKED
         ? githubcopilotquota::QuotaDisplayMode::Used
         : githubcopilotquota::QuotaDisplayMode::Remaining;
+    state.config.display.show_reset_info = IsDlgButtonChecked(window, kShowResetInfoCheckbox) == BST_CHECKED;
     state.config.display.reset_display = IsDlgButtonChecked(window, kResetTimeRadio) == BST_CHECKED
         ? githubcopilotquota::ResetDisplayMode::Time
         : githubcopilotquota::ResetDisplayMode::Countdown;
     state.config.display.show_remaining_credits = IsDlgButtonChecked(window, kShowCreditsCheckbox) == BST_CHECKED;
     state.options_changed = !SameDisplayOptions(state.config.display, state.original_config.display);
+}
+
+void SetResetChoiceEnabled(HWND window, bool enabled)
+{
+    EnableWindow(GetDlgItem(window, kResetCountdownRadio), enabled);
+    EnableWindow(GetDlgItem(window, kResetTimeRadio), enabled);
 }
 
 void CenterWindow(HWND window, HWND parent)
@@ -476,6 +485,22 @@ LRESULT CALLBACK OptionsDialogProc(HWND window, UINT message, WPARAM w_param, LP
             nullptr);
         SendMessageW(reset_label, WM_SETFONT, reinterpret_cast<WPARAM>(state->body_font), TRUE);
 
+        auto* show_reset_info = CreateWindowExW(
+            0,
+            L"BUTTON",
+            L"Show reset info",
+            WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX,
+            margin + ScaleForDpi(100, state->dpi),
+            y,
+            ScaleForDpi(190, state->dpi),
+            ScaleForDpi(24, state->dpi),
+            window,
+            reinterpret_cast<HMENU>(static_cast<INT_PTR>(kShowResetInfoCheckbox)),
+            nullptr,
+            nullptr);
+        SendMessageW(show_reset_info, WM_SETFONT, reinterpret_cast<WPARAM>(state->body_font), TRUE);
+
+        y += ScaleForDpi(34, state->dpi);
         auto* countdown_radio = CreateWindowExW(
             0,
             L"BUTTON",
@@ -533,10 +558,16 @@ LRESULT CALLBACK OptionsDialogProc(HWND window, UINT message, WPARAM w_param, LP
             kResetTimeRadio,
             state->config.display.reset_display == githubcopilotquota::ResetDisplayMode::Time ? kResetTimeRadio : kResetCountdownRadio);
         SendMessageW(
+            show_reset_info,
+            BM_SETCHECK,
+            state->config.display.show_reset_info ? BST_CHECKED : BST_UNCHECKED,
+            0);
+        SendMessageW(
             show_credits,
             BM_SETCHECK,
             state->config.display.show_remaining_credits ? BST_CHECKED : BST_UNCHECKED,
             0);
+        SetResetChoiceEnabled(window, state->config.display.show_reset_info);
 
         const int button_y = client.bottom - footer_height + ScaleForDpi(12, state->dpi);
         const int gap = ScaleForDpi(10, state->dpi);
@@ -656,6 +687,11 @@ LRESULT CALLBACK OptionsDialogProc(HWND window, UINT message, WPARAM w_param, LP
         }
 
         const auto command = LOWORD(w_param);
+        if (command == kShowResetInfoCheckbox)
+        {
+            SetResetChoiceEnabled(window, IsDlgButtonChecked(window, kShowResetInfoCheckbox) == BST_CHECKED);
+            return 0;
+        }
         if (command == kSaveButton || command == kSignInButton || command == kSignOutButton)
         {
             CaptureDisplayOptions(window, *state);
@@ -718,7 +754,7 @@ int ShowOptionsModalDialog(
 
     const DWORD style = WS_POPUP | WS_CAPTION | WS_SYSMENU;
     const DWORD ex_style = WS_EX_CONTROLPARENT | WS_EX_DLGMODALFRAME | WS_EX_WINDOWEDGE;
-    RECT window_rect{0, 0, ScaleForDpi(560, state.dpi), ScaleForDpi(300, state.dpi)};
+    RECT window_rect{0, 0, ScaleForDpi(560, state.dpi), ScaleForDpi(334, state.dpi)};
     AdjustWindowRectForDpi(&window_rect, style, ex_style, state.dpi);
 
     HWND window = CreateWindowExW(
@@ -866,6 +902,10 @@ std::wstring BuildGitHubCopilotSampleText(const githubcopilotquota::DisplayOptio
     if (options.show_remaining_credits)
     {
         sample += L" 20.0kcr";
+    }
+    if (!options.show_reset_info)
+    {
+        return sample;
     }
 
     sample += options.reset_display == githubcopilotquota::ResetDisplayMode::Time

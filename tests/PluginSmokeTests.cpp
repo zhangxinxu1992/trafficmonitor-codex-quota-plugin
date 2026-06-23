@@ -77,7 +77,8 @@ void PrepareDisplayConfig(const std::wstring& appdata)
         JoinPath(dir, L"config.json"),
         "{\n"
         "  \"quota_display\": \"remaining\",\n"
-        "  \"reset_display\": \"countdown\"\n"
+        "  \"reset_display\": \"countdown\",\n"
+        "  \"show_reset_info\": false\n"
         "}\n");
 }
 
@@ -184,6 +185,32 @@ HWND FindOwnWindowByClassAndTitle(const wchar_t* class_name, const wchar_t* titl
     return context.window;
 }
 
+struct FindChildByTextContext
+{
+    const wchar_t* text{};
+    HWND window{};
+};
+
+BOOL CALLBACK FindChildByText(HWND window, LPARAM parameter)
+{
+    auto* context = reinterpret_cast<FindChildByTextContext*>(parameter);
+    wchar_t text[256]{};
+    GetWindowTextW(window, text, static_cast<int>(_countof(text)));
+    if (std::wstring(text) == context->text)
+    {
+        context->window = window;
+        return FALSE;
+    }
+    return TRUE;
+}
+
+HWND FindChildWindowByText(HWND parent, const wchar_t* text)
+{
+    FindChildByTextContext context{text, nullptr};
+    EnumChildWindows(parent, FindChildByText, reinterpret_cast<LPARAM>(&context));
+    return context.window;
+}
+
 void VerifyOptionsDialogOpensAndCloses(ITMPlugin* plugin)
 {
     std::atomic<bool> finished{false};
@@ -209,6 +236,16 @@ void VerifyOptionsDialogOpensAndCloses(ITMPlugin* plugin)
     Check(dialog != nullptr, "Codex plugin options dialog should open");
     if (dialog != nullptr)
     {
+        const auto show_reset_info = FindChildWindowByText(dialog, L"Show reset info");
+        const auto countdown = FindChildWindowByText(dialog, L"Countdown");
+        const auto reset_time = FindChildWindowByText(dialog, L"Reset time");
+        Check(show_reset_info != nullptr, "Codex options should include reset info checkbox");
+        Check(show_reset_info != nullptr && SendMessageW(show_reset_info, BM_GETCHECK, 0, 0) == BST_UNCHECKED,
+            "Codex reset info checkbox should reflect hidden reset config");
+        Check(countdown != nullptr && !IsWindowEnabled(countdown),
+            "Codex countdown option should be disabled when reset info is hidden");
+        Check(reset_time != nullptr && !IsWindowEnabled(reset_time),
+            "Codex reset time option should be disabled when reset info is hidden");
         PostMessageW(dialog, WM_CLOSE, 0, 0);
     }
     else if (dialog_thread_id != 0)
@@ -277,7 +314,7 @@ int main()
             Check(std::wstring(five_hour->GetItemId()) == L"CodexQuota5h", "5h item id should match");
             Check(std::wstring(five_hour->GetItemName()) == L"TrafficMonitor Codex 5h", "5h item name should match");
             Check(std::wstring(five_hour->GetItemLableText()) == L"CX 5h:", "5h label should use the CX prefix");
-            Check(std::wstring(five_hour->GetItemValueSampleText()) == L" 100% 4h 59m", "5h sample should follow countdown display config");
+            Check(std::wstring(five_hour->GetItemValueSampleText()) == L" 100%", "5h sample should omit hidden reset info");
             Check(std::wstring(five_hour->GetItemValueText()) == L" ...", "5h initial value should include visible spacing before loading");
         }
         if (weekly != nullptr)
@@ -285,7 +322,7 @@ int main()
             Check(std::wstring(weekly->GetItemId()) == L"CodexQuotaWeek", "weekly item id should match");
             Check(std::wstring(weekly->GetItemName()) == L"TrafficMonitor Codex Week", "weekly item name should match");
             Check(std::wstring(weekly->GetItemLableText()) == L"CX 7d:", "weekly label should use the CX prefix");
-            Check(std::wstring(weekly->GetItemValueSampleText()) == L" 100% 6d 23h", "weekly sample should follow countdown display config");
+            Check(std::wstring(weekly->GetItemValueSampleText()) == L" 100%", "weekly sample should omit hidden reset info");
             Check(std::wstring(weekly->GetItemValueText()) == L" ...", "weekly initial value should include visible spacing before loading");
         }
 
@@ -307,10 +344,10 @@ int main()
 
             Check(Contains(five_hour_value, L"%"), "live 5h plugin value should contain a percent");
             Check(StartsWith(five_hour_value, L" "), "live 5h plugin value should include visible spacing before the percent");
-            Check(ContainsResetIndicator(five_hour_value), "live 5h plugin value should contain a reset countdown or reset time");
+            Check(!ContainsResetIndicator(five_hour_value), "live 5h plugin value should omit hidden reset info");
             Check(Contains(weekly_value, L"%"), "live weekly plugin value should contain a percent");
             Check(StartsWith(weekly_value, L" "), "live weekly plugin value should include visible spacing before the percent");
-            Check(ContainsResetIndicator(weekly_value), "live weekly plugin value should contain a reset countdown or reset time");
+            Check(!ContainsResetIndicator(weekly_value), "live weekly plugin value should omit hidden reset info");
         }
     }
 

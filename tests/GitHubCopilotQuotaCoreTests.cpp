@@ -390,6 +390,7 @@ void TestParsesCurrentConfigFields()
             "username": "octocat",
             "quota_display": "used",
             "reset_display": "time",
+            "show_reset_info": false,
             "show_remaining_credits": false
         })",
         error);
@@ -398,8 +399,16 @@ void TestParsesCurrentConfigFields()
     Check(config->username == L"octocat", "username should parse");
     Check(config->display.quota_display == githubcopilotquota::QuotaDisplayMode::Used, "quota display should parse");
     Check(config->display.reset_display == githubcopilotquota::ResetDisplayMode::Time, "reset display should parse");
+    Check(!config->display.show_reset_info, "reset info display flag should parse");
     Check(!config->display.show_remaining_credits, "remaining credits display flag should parse");
     Check(error.empty(), "successful config parse should not set error");
+
+    error.clear();
+    const auto default_config = githubcopilotquota::ParseConfigJson(L"{}", error);
+    Check(default_config.has_value(), "empty GitHub Copilot display config should parse");
+    Check(default_config->display.show_reset_info, "GitHub Copilot reset info should default to visible");
+    Check(githubcopilotquota::SerializeConfigJson(*config).find(L"\"show_reset_info\": false") != std::wstring::npos,
+        "GitHub Copilot config serialization should persist hidden reset info");
 }
 
 void TestParsesUserLogin()
@@ -548,6 +557,14 @@ void TestFormatsQuotaValueWithDisplayOptions()
     options.show_remaining_credits = true;
     Check(githubcopilotquota::FormatQuotaValue(quota, reset, now, options) == L" 18% 1.2kcr 18:30",
         "GitHub remaining credits should remain remaining credits even with used percent");
+
+    options.show_reset_info = false;
+    Check(githubcopilotquota::FormatQuotaValue(quota, reset, now, options) == L" 18% 1.2kcr",
+        "hidden GitHub Copilot reset info should keep percent and credits only");
+
+    options.show_remaining_credits = false;
+    Check(githubcopilotquota::FormatQuotaValue(quota, reset, now, options) == L" 18%",
+        "hidden GitHub Copilot reset info and credits should leave only the quota percent");
 }
 
 void TestFormatsMonthlyResetCountdownInDays()

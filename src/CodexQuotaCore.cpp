@@ -113,6 +113,26 @@ std::optional<std::wstring> FindJsonScalarText(const std::wstring& json, const s
     return Trim(json.substr(value_pos, value_end == std::wstring::npos ? std::wstring::npos : value_end - value_pos));
 }
 
+std::optional<bool> FindJsonBool(const std::wstring& json, const std::wstring& key)
+{
+    const auto text = FindJsonScalarText(json, key);
+    if (!text.has_value())
+    {
+        return std::nullopt;
+    }
+
+    const auto value = Trim(*text);
+    if (value == L"true")
+    {
+        return true;
+    }
+    if (value == L"false")
+    {
+        return false;
+    }
+    return std::nullopt;
+}
+
 std::optional<std::string> FindJsonStringValue(const std::string& json, const std::string& key)
 {
     const std::string quoted_key = "\"" + key + "\"";
@@ -470,6 +490,16 @@ std::optional<PluginConfig> ParseConfigJson(const std::wstring& json, std::wstri
         }
         config.display.reset_display = *mode;
     }
+    if (FindJsonScalarText(json, L"show_reset_info").has_value())
+    {
+        const auto show_reset_info = FindJsonBool(json, L"show_reset_info");
+        if (!show_reset_info.has_value())
+        {
+            error = L"TrafficMonitor Codex quota config show_reset_info must be true or false.";
+            return std::nullopt;
+        }
+        config.display.show_reset_info = *show_reset_info;
+    }
 
     return config;
 }
@@ -479,7 +509,8 @@ std::wstring SerializeConfigJson(const PluginConfig& config)
     std::wostringstream stream;
     stream << L"{\n"
            << L"  \"quota_display\": \"" << QuotaDisplayModeText(config.display.quota_display) << L"\",\n"
-           << L"  \"reset_display\": \"" << ResetDisplayModeText(config.display.reset_display) << L"\"\n"
+           << L"  \"reset_display\": \"" << ResetDisplayModeText(config.display.reset_display) << L"\",\n"
+           << L"  \"show_reset_info\": " << (config.display.show_reset_info ? L"true" : L"false") << L"\n"
            << L"}\n";
     return stream.str();
 }
@@ -520,7 +551,7 @@ std::wstring FormatWindowText(double used_percent, long long reset_at, long long
     auto text = options.quota_display == QuotaDisplayMode::Used
         ? FormatPercent(used_percent)
         : FormatRemainingPercent(used_percent);
-    if (reset_at > 0)
+    if (options.show_reset_info && reset_at > 0)
     {
         text += L" ";
         text += options.reset_display == ResetDisplayMode::Time

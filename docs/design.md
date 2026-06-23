@@ -9,7 +9,7 @@ The plugin exposes two display items:
 - `CX 5h:`: percentage of the Codex 5-hour primary rate window plus reset information.
 - `CX 7d:`: percentage of the Codex 7-day secondary rate window plus reset information.
 
-Values use compact text, for example `CX 5h: 76% 42m` or `CX 7d: 90% 6d 1h`. By default the percentage is remaining quota and the suffix is the countdown until that quota window resets. The user can switch the percentage to used quota and the reset suffix to local reset time. The taskbar value text starts with a regular space so spacing remains visible after TrafficMonitor trims plugin-label edges. `GetItemValueSampleText()` follows the current display mode: countdown mode uses compact samples such as ` 100% 4h 59m` or ` 100% 6d 23h`, and reset-time mode reserves enough width for values such as ` 100% 12-31 23:59`.
+Values use compact text, for example `CX 5h: 76% 42m` or `CX 7d: 90% 6d 1h`. By default the percentage is remaining quota and the suffix is the countdown until that quota window resets. The user can switch the percentage to used quota, hide reset information, or show visible reset information as local reset time. The taskbar value text starts with a regular space so spacing remains visible after TrafficMonitor trims plugin-label edges. `GetItemValueSampleText()` follows the current display mode: countdown mode uses compact samples such as ` 100% 4h 59m` or ` 100% 6d 23h`, reset-time mode reserves enough width for values such as ` 100% 12-31 23:59`, and hidden reset mode reserves only ` 100%`.
 
 ## Data Source
 
@@ -36,11 +36,12 @@ Optional Codex display configuration lives at `%APPDATA%\TrafficMonitorCodexQuot
 ```json
 {
   "quota_display": "remaining",
-  "reset_display": "countdown"
+  "reset_display": "countdown",
+  "show_reset_info": true
 }
 ```
 
-`quota_display` accepts `remaining` or `used`. `reset_display` accepts `countdown` or `time`. Missing config uses the defaults above.
+`quota_display` accepts `remaining` or `used`. `show_reset_info` accepts `true` or `false`. `reset_display` accepts `countdown` or `time` and only affects the taskbar value when `show_reset_info` is `true`. Missing config uses the defaults above.
 
 ## Runtime Behavior
 

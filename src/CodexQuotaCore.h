@@ -42,6 +42,7 @@ struct DisplayOptions
 {
     QuotaDisplayMode quota_display{QuotaDisplayMode::Remaining};
     ResetDisplayMode reset_display{ResetDisplayMode::Countdown};
+    bool show_reset_info{true};
 };
 
 struct PluginConfig

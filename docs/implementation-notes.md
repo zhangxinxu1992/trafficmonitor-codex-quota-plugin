@@ -45,8 +45,9 @@ Supported Codex display config keys:
 
 - `quota_display`: `remaining` or `used`.
 - `reset_display`: `countdown` or `time`.
+- `show_reset_info`: `true` or `false`; when false, the taskbar value omits reset countdown/time.
 
-Missing config uses `remaining` plus `countdown`.
+Missing config uses `remaining` plus `countdown`, with reset info visible.
 
 ## TrafficMonitor GitHub Copilot Quota Plugin
 
@@ -115,6 +116,7 @@ Currently useful optional config keys:
 - `username`: displayed in the tooltip only; no `/user` request is needed for quota fetching.
 - `quota_display`: `remaining` or `used`.
 - `reset_display`: `countdown` or `time`.
+- `show_reset_info`: `true` or `false`; when false, the taskbar value omits reset countdown/time.
 - `show_remaining_credits`: `true` or `false`; the credit count is always remaining credits when shown.
 
 TrafficMonitor may cache the Copilot plugin label in `C:\Apps\TrafficMonitor\config.ini`:
@@ -150,6 +152,10 @@ Codex reset-time sample:
 
 - ` 100% 12-31 23:59`
 
+Codex hidden-reset sample:
+
+- ` 100%`
+
 GitHub Copilot countdown samples:
 
 - ` 100% 20.0kcr 31d` when remaining credits are shown
@@ -160,9 +166,14 @@ GitHub Copilot reset-time samples:
 - ` 100% 20.0kcr 12-31 23:59` when remaining credits are shown
 - ` 100% 12-31 23:59` when remaining credits are hidden
 
+GitHub Copilot hidden-reset samples:
+
+- ` 100% 20.0kcr` when remaining credits are shown
+- ` 100%` when remaining credits are hidden
+
 ## Reset Countdown
 
-The value suffix is a compact reset countdown:
+When reset info is visible, the value suffix is a compact reset countdown:
 
 - minutes for the 5-hour window, for example `42m`
 - hours and minutes when useful, for example `4h 30m`

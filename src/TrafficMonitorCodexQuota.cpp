@@ -27,6 +27,7 @@ constexpr int kQuotaUsedRadio = 2002;
 constexpr int kResetCountdownRadio = 2003;
 constexpr int kResetTimeRadio = 2004;
 constexpr int kSaveButton = 2005;
+constexpr int kShowResetInfoCheckbox = 2006;
 constexpr const wchar_t* kOptionsDialogClassName = L"TrafficMonitorCodexQuotaOptions";
 
 class CodexQuotaPlugin;
@@ -213,7 +214,8 @@ bool SaveCodexConfig(const codexquota::PluginConfig& config, std::wstring& error
 bool SameDisplayOptions(const codexquota::DisplayOptions& lhs, const codexquota::DisplayOptions& rhs)
 {
     return lhs.quota_display == rhs.quota_display
-        && lhs.reset_display == rhs.reset_display;
+        && lhs.reset_display == rhs.reset_display
+        && lhs.show_reset_info == rhs.show_reset_info;
 }
 
 int FallbackSystemDpi()
@@ -334,6 +336,24 @@ void SetButtonFont(HWND parent, int id, HFONT font)
     SendMessageW(GetDlgItem(parent, id), WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
 }
 
+void SetResetChoiceEnabled(HWND window, bool enabled)
+{
+    EnableWindow(GetDlgItem(window, kResetCountdownRadio), enabled);
+    EnableWindow(GetDlgItem(window, kResetTimeRadio), enabled);
+}
+
+void CaptureDisplayOptions(HWND window, CodexOptionsDialogState& state)
+{
+    state.config.display.quota_display = IsDlgButtonChecked(window, kQuotaUsedRadio) == BST_CHECKED
+        ? codexquota::QuotaDisplayMode::Used
+        : codexquota::QuotaDisplayMode::Remaining;
+    state.config.display.show_reset_info = IsDlgButtonChecked(window, kShowResetInfoCheckbox) == BST_CHECKED;
+    state.config.display.reset_display = IsDlgButtonChecked(window, kResetTimeRadio) == BST_CHECKED
+        ? codexquota::ResetDisplayMode::Time
+        : codexquota::ResetDisplayMode::Countdown;
+    state.changed = !SameDisplayOptions(state.config.display, state.original_config.display);
+}
+
 LRESULT CALLBACK CodexOptionsDialogProc(HWND window, UINT message, WPARAM w_param, LPARAM l_param)
 {
     auto* state = reinterpret_cast<CodexOptionsDialogState*>(GetWindowLongPtrW(window, GWLP_USERDATA));
@@ -375,10 +395,13 @@ LRESULT CALLBACK CodexOptionsDialogProc(HWND window, UINT message, WPARAM w_para
 
         y += ScaleForDpi(36, state->dpi);
         CreateWindowExW(0, L"STATIC", L"Reset:", WS_CHILD | WS_VISIBLE, margin, y, ScaleForDpi(100, state->dpi), ScaleForDpi(22, state->dpi), window, nullptr, nullptr, nullptr);
+        CreateWindowExW(0, L"BUTTON", L"Show reset info", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX, margin + ScaleForDpi(110, state->dpi), y, ScaleForDpi(170, state->dpi), ScaleForDpi(24, state->dpi), window, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kShowResetInfoCheckbox)), nullptr, nullptr);
+
+        y += ScaleForDpi(32, state->dpi);
         CreateWindowExW(0, L"BUTTON", L"Countdown", WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_GROUP | BS_AUTORADIOBUTTON, margin + ScaleForDpi(110, state->dpi), y, ScaleForDpi(120, state->dpi), ScaleForDpi(24, state->dpi), window, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kResetCountdownRadio)), nullptr, nullptr);
         CreateWindowExW(0, L"BUTTON", L"Reset time", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTORADIOBUTTON, margin + ScaleForDpi(240, state->dpi), y, ScaleForDpi(120, state->dpi), ScaleForDpi(24, state->dpi), window, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kResetTimeRadio)), nullptr, nullptr);
 
-        for (const auto id : {kQuotaRemainingRadio, kQuotaUsedRadio, kResetCountdownRadio, kResetTimeRadio})
+        for (const auto id : {kQuotaRemainingRadio, kQuotaUsedRadio, kShowResetInfoCheckbox, kResetCountdownRadio, kResetTimeRadio})
         {
             SetButtonFont(window, id, state->body_font);
         }
@@ -398,6 +421,12 @@ LRESULT CALLBACK CodexOptionsDialogProc(HWND window, UINT message, WPARAM w_para
             kResetCountdownRadio,
             kResetTimeRadio,
             state->config.display.reset_display == codexquota::ResetDisplayMode::Time ? kResetTimeRadio : kResetCountdownRadio);
+        SendMessageW(
+            GetDlgItem(window, kShowResetInfoCheckbox),
+            BM_SETCHECK,
+            state->config.display.show_reset_info ? BST_CHECKED : BST_UNCHECKED,
+            0);
+        SetResetChoiceEnabled(window, state->config.display.show_reset_info);
 
         const int button_y = client.bottom - footer_height + ScaleForDpi(12, state->dpi);
         const int button_height = ScaleForDpi(28, state->dpi);
@@ -456,14 +485,13 @@ LRESULT CALLBACK CodexOptionsDialogProc(HWND window, UINT message, WPARAM w_para
         const auto command = LOWORD(w_param);
         if (command == kSaveButton)
         {
-            state->config.display.quota_display = IsDlgButtonChecked(window, kQuotaUsedRadio) == BST_CHECKED
-                ? codexquota::QuotaDisplayMode::Used
-                : codexquota::QuotaDisplayMode::Remaining;
-            state->config.display.reset_display = IsDlgButtonChecked(window, kResetTimeRadio) == BST_CHECKED
-                ? codexquota::ResetDisplayMode::Time
-                : codexquota::ResetDisplayMode::Countdown;
-            state->changed = !SameDisplayOptions(state->config.display, state->original_config.display);
+            CaptureDisplayOptions(window, *state);
             DestroyWindow(window);
+            return 0;
+        }
+        if (command == kShowResetInfoCheckbox)
+        {
+            SetResetChoiceEnabled(window, IsDlgButtonChecked(window, kShowResetInfoCheckbox) == BST_CHECKED);
             return 0;
         }
         if (command == IDCANCEL || command == IDCLOSE)
@@ -507,7 +535,7 @@ bool ShowCodexOptionsDialog(HWND parent, codexquota::PluginConfig& config)
 
     const DWORD style = WS_POPUP | WS_CAPTION | WS_SYSMENU;
     const DWORD ex_style = WS_EX_CONTROLPARENT | WS_EX_DLGMODALFRAME | WS_EX_WINDOWEDGE;
-    RECT window_rect{0, 0, ScaleForDpi(440, state.dpi), ScaleForDpi(210, state.dpi)};
+    RECT window_rect{0, 0, ScaleForDpi(440, state.dpi), ScaleForDpi(244, state.dpi)};
     AdjustWindowRectForDpi(&window_rect, style, ex_style, state.dpi);
 
     HWND window = CreateWindowExW(
@@ -570,6 +598,10 @@ bool ShowCodexOptionsDialog(HWND parent, codexquota::PluginConfig& config)
 std::wstring BuildCodexSampleText(WindowKind kind, const codexquota::DisplayOptions& options)
 {
     std::wstring sample = L" 100%";
+    if (!options.show_reset_info)
+    {
+        return sample;
+    }
     if (options.reset_display == codexquota::ResetDisplayMode::Time)
     {
         sample += L" 12-31 23:59";

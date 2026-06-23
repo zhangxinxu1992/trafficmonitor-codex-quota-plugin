@@ -646,6 +646,16 @@ std::optional<PluginConfig> ParseConfigJson(const std::wstring& json, std::wstri
         }
         config.display.show_remaining_credits = *show_remaining_credits;
     }
+    if (FindJsonValueStart(json, L"show_reset_info").has_value())
+    {
+        const auto show_reset_info = FindJsonBool(json, L"show_reset_info");
+        if (!show_reset_info.has_value())
+        {
+            error = L"TrafficMonitor GitHub Copilot quota config show_reset_info must be true or false.";
+            return std::nullopt;
+        }
+        config.display.show_reset_info = *show_reset_info;
+    }
 
     return config;
 }
@@ -677,6 +687,8 @@ std::wstring SerializeConfigJson(const PluginConfig& config)
     stream << L"  \"quota_display\": \"" << QuotaDisplayModeText(config.display.quota_display) << L"\"";
     write_separator();
     stream << L"  \"reset_display\": \"" << ResetDisplayModeText(config.display.reset_display) << L"\"";
+    write_separator();
+    stream << L"  \"show_reset_info\": " << (config.display.show_reset_info ? L"true" : L"false");
     write_separator();
     stream << L"  \"show_remaining_credits\": " << (config.display.show_remaining_credits ? L"true" : L"false");
     stream << L"\n}\n";
@@ -1014,7 +1026,7 @@ std::wstring FormatQuotaValue(const Quota& quota, long long reset_at, long long 
         value += L" ";
         value += FormatCreditCount(quota.remaining_credits);
     }
-    if (reset_at > 0)
+    if (options.show_reset_info && reset_at > 0)
     {
         value += L" ";
         value += options.reset_display == ResetDisplayMode::Time
